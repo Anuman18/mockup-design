@@ -1,0 +1,243 @@
+{
+  "cities": [
+    {
+      "id": 1,
+      "name": "Mumbai",
+      "state": "Maharashtra"
+    },
+    {
+      "id": 2,
+      "name": "New Delhi",
+      "state": "Delhi"
+    },
+    {
+      "id": 3,
+      "name": "Bengaluru",
+      "state": "Karnataka"
+    },
+    {
+      "id": 4,
+      "name": "Bhopal",
+      "state": "MP"
+    }
+  ],
+  "venues": [
+    {
+      "id": 1,
+      "city_id": 1,
+      "name": "Taj Lands End",
+      "address": "Bandra West, Mumbai",
+      "image_url": "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=600&q=80",
+      "mask_x": 20,
+      "mask_y": 15,
+      "mask_w": 60,
+      "mask_h": 40
+    },
+    {
+      "id": 2,
+      "city_id": 1,
+      "name": "JW Marriott Sahar",
+      "address": "IA Project Road, Andheri East, Mumbai",
+      "image_url": "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=600&q=80",
+      "mask_x": 15,
+      "mask_y": 20,
+      "mask_w": 70,
+      "mask_h": 35
+    },
+    {
+      "id": 3,
+      "city_id": 2,
+      "name": "The Oberoi New Delhi",
+      "address": "Dr. Zakir Hussain Marg, New Delhi",
+      "image_url": "https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=600&q=80",
+      "mask_x": 25,
+      "mask_y": 10,
+      "mask_w": 50,
+      "mask_h": 45
+    },
+    {
+      "id": 4,
+      "city_id": 3,
+      "name": "ITC Gardenia",
+      "address": "Residency Road, Bengaluru",
+      "image_url": "https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=600&q=80",
+      "mask_x": 30,
+      "mask_y": 15,
+      "mask_w": 40,
+      "mask_h": 35
+    },
+    {
+      "id": 5,
+      "city_id": 4,
+      "name": "The minto hall",
+      "address": "bhopal",
+      "image_url": "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=400&q=80",
+      "mask_x": 0,
+      "mask_y": 0,
+      "mask_w": 0,
+      "mask_h": 0
+    },
+    {
+      "id": 6,
+      "city_id": 1,
+      "name": "minto hall",
+      "address": "mumbai",
+      "image_url": "/uploads/1783594661652_Minto_hall_3.png",
+      "mask_x": 20,
+      "mask_y": 15,
+      "mask_w": 60,
+      "mask_h": 40
+    }
+  ],
+  "halls": [
+    {
+      "id": 1,
+      "venue_id": 1,
+      "name": "Grand Ballroom",
+      "width": 25,
+      "length": 45,
+      "height": 7.5,
+      "capacity": 800
+    },
+    {
+      "id": 2,
+      "venue_id": 1,
+      "name": "Sea View Pavilion",
+      "width": 20,
+      "length": 30,
+      "height": 6,
+      "capacity": 400
+    },
+    {
+      "id": 3,
+      "venue_id": 2,
+      "name": "Grand Ballroom 1 & 2",
+      "width": 30,
+      "length": 50,
+      "height": 8.5,
+      "capacity": 1200
+    },
+    {
+      "id": 4,
+      "venue_id": 3,
+      "name": "Plenary Ballroom",
+      "width": 28,
+      "length": 48,
+      "height": 9,
+      "capacity": 1000
+    },
+    {
+      "id": 5,
+      "venue_id": 4,
+      "name": "Mysore Hall",
+      "width": 22,
+      "length": 38,
+      "height": 7,
+      "capacity": 600
+    },
+    {
+      "id": 6,
+      "venue_id": 4,
+      "name": "asd",
+      "width": 23,
+      "length": 22,
+      "height": 33,
+      "capacity": 222
+    },
+    {
+      "id": 7,
+      "venue_id": 5,
+      "name": "meow",
+      "width": 34,
+      "length": 45,
+      "height": 6.8,
+      "capacity": 600
+    },
+    {
+      "id": 8,
+      "venue_id": 6,
+      "name": "hall 1",
+      "width": 34,
+      "length": 34,
+      "height": 22,
+      "capacity": 300
+    }
+  ],
+  "templates": [
+    {
+      "id": 1,
+      "name": "Royal Staggered Wood Set",
+      "type": "stage",
+      "value": "Royal Wooden Stage"
+    },
+    {
+      "id": 2,
+      "name": "Seamless Gloss Acrylic Set",
+      "type": "stage",
+      "value": "Glossy Acrylic Stage"
+    },
+    {
+      "id": 3,
+      "name": "LED Digital Backdrop Truss",
+      "type": "stage",
+      "value": "LED Truss Stage"
+    },
+    {
+      "id": 4,
+      "name": "Theatre Rows Layout",
+      "type": "seating",
+      "value": "Theatre"
+    },
+    {
+      "id": 5,
+      "name": "Cluster Round Tables (Banquet)",
+      "type": "seating",
+      "value": "Cluster"
+    },
+    {
+      "id": 6,
+      "name": "Classroom Desks Layout",
+      "type": "seating",
+      "value": "Classroom"
+    },
+    {
+      "id": 7,
+      "name": "Classic Gold & Navy Blue",
+      "type": "theme",
+      "value": "Gold/Navy"
+    },
+    {
+      "id": 8,
+      "name": "Corporate Cyber Silver & Cyan",
+      "type": "theme",
+      "value": "Silver/Cyan"
+    },
+    {
+      "id": 9,
+      "name": "Botanical Eco Emerald Green",
+      "type": "theme",
+      "value": "Emerald Green"
+    }
+  ],
+  "brandings": [
+    {
+      "id": 1,
+      "name": "Corporate Tech Summit Template",
+      "logos": [
+        "Tata",
+        "Reliance",
+        "NASSCOM",
+        "Tech Mahindra"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Government Protocol template",
+      "logos": [
+        "MP Government",
+        "Digital India",
+        "Startup India"
+      ]
+    }
+  ]
+}
