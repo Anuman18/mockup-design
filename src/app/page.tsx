@@ -1,1139 +1,589 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Sparkles, 
-  MapPin, 
-  Settings2, 
-  Palette, 
-  Check, 
-  ChevronRight, 
-  ChevronLeft, 
-  Loader2, 
-  Download, 
-  ExternalLink,
-  Sliders,
-  Calendar,
-  Layers,
-  Users
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  MapPin, Building2, Layers, ChevronRight, ChevronLeft,
+  Upload, Sparkles, Loader2, Check, ZoomIn, Download,
+  Calendar, Type, Users, Star, Palette, Layout, X, Eye
 } from 'lucide-react';
-import AdminBoundingBox from '@/components/AdminBoundingBox';
 
-interface City {
-  id: number;
-  name: string;
-  state: string;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface City    { id: number; name: string; state: string; }
+interface Venue   { id: number; cityId: number; name: string; address: string; }
+interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; maskX: number; maskY: number; maskWidth: number; maskHeight: number; }
+interface Template{ id: number; name: string; value: string; }
+interface Logo    { id: number; logoName: string; }
+interface Branding{ id: number; templateName: string; logos: Logo[]; }
 
-interface Venue {
-  id: number;
-  city_id: number;
-  name: string;
-  address: string;
-  image_url?: string;
-}
+const STEP_LABELS = ['Venue', 'Event Setup', 'Branding', 'Generate'];
 
-interface Hall {
-  id: number;
-  venue_id: number;
-  name: string;
-  width: number;
-  length: number;
-  height: number;
-  capacity: number;
-}
-
-interface Template {
-  id: number;
-  name: string;
-  type: 'stage' | 'seating' | 'theme';
-  value: string;
-}
-
-interface Branding {
-  id: number;
-  name: string;
-  logos: string[];
-}
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
-
-export default function ClientConfigurator() {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [activeMode, setActiveMode] = useState<'wizard' | 'stitcher'>('wizard');
-
-  // Instant Stitcher State
-  const [stitcherBaseImage, setStitcherBaseImage] = useState<string>('');
-  const [stitcherBanner, setStitcherBanner] = useState<string>('');
-  const [stitcherResult, setStitcherResult] = useState<string>('');
-  const [stitcherLoading, setStitcherLoading] = useState(false);
-  const [stitcherCoords, setStitcherCoords] = useState<{mask_x: number, mask_y: number, mask_w: number, mask_h: number} | null>(null);
-
-  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
-
-  useEffect(() => {
-    const savedKey = localStorage.getItem('gemini_api_key');
-    if (savedKey) setGeminiApiKey(savedKey);
-  }, []);
-
-  const handleKeyChange = (key: string) => {
-    setGeminiApiKey(key);
-    localStorage.setItem('gemini_api_key', key);
-  };
-
-  // --- Dynamic Pipeline States ---
-  const [cities, setCities] = useState<City[]>([]);
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [halls, setHalls] = useState<Hall[]>([]);
-  const [stageTemplates, setStageTemplates] = useState<Template[]>([]);
-  const [seatingTemplates, setSeatingTemplates] = useState<Template[]>([]);
-  const [themePresets, setThemePresets] = useState<Template[]>([]);
-  const [brandings, setBrandings] = useState<Branding[]>([]);
-
-  // Selected State
-  const [selectedCityId, setSelectedCityId] = useState<number | ''>('');
-  const [selectedVenueId, setSelectedVenueId] = useState<number | ''>('');
-  const [selectedHallId, setSelectedHallId] = useState<number | ''>('');
-
-  const [selectedStageTemplate, setSelectedStageTemplate] = useState<string>('');
-  const [stageWidth, setStageWidth] = useState<number>(18);
-  const [stageLength, setStageLength] = useState<number>(8);
-  const [stageHeight, setStageHeight] = useState<number>(1.2);
-  const [selectedSeatingTemplate, setSelectedSeatingTemplate] = useState<string>('');
-  const [seatingCount, setSeatingCount] = useState<number>(500);
-
-  const [eventName, setEventName] = useState('India Technology & Growth Summit 2026');
-  const [eventDate, setEventDate] = useState('2026-11-20');
-  const [selectedBrandingId, setSelectedBrandingId] = useState<number | ''>('');
-  const [themeColors, setThemeColors] = useState<string[]>(['#1e3a8a', '#475569']); // Slate Primary/Secondary accents
-  const [customDirectives, setCustomDirectives] = useState('');
-
-  // UI state
-  const [fetchingVenues, setFetchingVenues] = useState(false);
-  const [fetchingHalls, setFetchingHalls] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [generationLogs, setGenerationLogs] = useState<string[]>([]);
-  const [result, setResult] = useState<any | null>(null);
-
-  // Compositing State
-  const [bannerImageBase64, setBannerImageBase64] = useState<string>('');
-  const [compositing, setCompositing] = useState(false);
-  const [compositeResult, setCompositeResult] = useState<any | null>(null);
-
-  // Active Resolved Objects for Summary Display
-  const activeCity = cities.find(c => c.id === Number(selectedCityId));
-  const activeVenue = venues.find(v => v.id === Number(selectedVenueId));
-  const activeHall = halls.find(h => h.id === Number(selectedHallId));
-  const activeBranding = brandings.find(b => b.id === Number(selectedBrandingId));
-
-  // 1. Fetch Cities and Templates on Mount
-  useEffect(() => {
-    const initFetch = async () => {
-      try {
-        const [citiesRes, templatesRes, brandingsRes] = await Promise.all([
-          fetch(`${API_BASE}/api/cities`),
-          fetch(`${API_BASE}/api/templates`),
-          fetch(`${API_BASE}/api/brandings`)
-        ]);
-
-        const citiesData = await citiesRes.json();
-        const templatesData: Template[] = await templatesRes.json();
-        const brandingsData = await brandingsRes.json();
-
-        setCities(citiesData);
-        setBrandings(brandingsData);
-
-        // Filter and set template types
-        const stages = templatesData.filter(t => t.type === 'stage');
-        const seatings = templatesData.filter(t => t.type === 'seating');
-        const themes = templatesData.filter(t => t.type === 'theme');
-
-        setStageTemplates(stages);
-        setSeatingTemplates(seatings);
-        setThemePresets(themes);
-
-        // Default selections
-        if (stages.length > 0) setSelectedStageTemplate(stages[0].value);
-        if (seatings.length > 0) setSelectedSeatingTemplate(seatings[0].value);
-        if (brandingsData.length > 0) setSelectedBrandingId(brandingsData[0].id);
-
-        if (citiesData.length > 0) {
-          setSelectedCityId(citiesData[0].id);
-        }
-      } catch (err) {
-        console.error('Failed initialization fetch:', err);
-      }
-    };
-    initFetch();
-  }, []);
-
-  // 2. Cascade Fetch Venues when City changes
-  useEffect(() => {
-    if (!selectedCityId) return;
-
-    const fetchVenues = async () => {
-      setFetchingVenues(true);
-      setSelectedVenueId('');
-      setSelectedHallId('');
-      setHalls([]);
-      try {
-        const res = await fetch(`${API_BASE}/api/venues?cityId=${selectedCityId}`);
-        const data = await res.json();
-        setVenues(data);
-        if (data.length > 0) {
-          setSelectedVenueId(data[0].id);
-        }
-      } catch (err) {
-        console.error('Failed fetching venues:', err);
-      } finally {
-        setFetchingVenues(false);
-      }
-    };
-    fetchVenues();
-  }, [selectedCityId]);
-
-  // 3. Cascade Fetch Halls when Venue changes
-  useEffect(() => {
-    if (!selectedVenueId) return;
-
-    const fetchHalls = async () => {
-      setFetchingHalls(true);
-      setSelectedHallId('');
-      try {
-        const res = await fetch(`${API_BASE}/api/halls?venueId=${selectedVenueId}`);
-        const data = await res.json();
-        setHalls(data);
-        if (data.length > 0) {
-          setSelectedHallId(data[0].id);
-          setSeatingCount(data[0].capacity); // Default capacity of room
-        }
-      } catch (err) {
-        console.error('Failed fetching halls:', err);
-      } finally {
-        setFetchingHalls(false);
-      }
-    };
-    fetchHalls();
-  }, [selectedVenueId]);
-
-  // Handle banner image compositing
-  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedVenueId) return;
-
-    setCompositing(true);
-    setCompositeResult(null);
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target?.result as string;
-      setBannerImageBase64(base64);
-
-      try {
-        const res = await fetch(`${API_BASE}/api/composite`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            venue_id: Number(selectedVenueId),
-            banner_base64: base64
-          })
-        });
-
-        const data = await res.json();
-        if (data.success) {
-          setCompositeResult(data);
-        } else {
-          alert(data.error || 'Failed to composite banner image.');
-        }
-      } catch (err) {
-        console.error('Composite API error:', err);
-      } finally {
-        setCompositing(false);
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Handles uploading custom venue photo containing white screen
-  const handleStitcherBaseUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setStitcherBaseImage(reader.result as string);
-      setStitcherResult('');
-      setStitcherCoords(null);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Handles uploading event banner
-  const handleStitcherBannerUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setStitcherBanner(reader.result as string);
-      setStitcherResult('');
-    };
-    reader.readAsDataURL(file);
-  };
-
-  // Call composite route with base_image_base64 and banner_base64
-  const triggerInstantStitch = async () => {
-    if (!stitcherBaseImage || !stitcherBanner) return;
-
-    setStitcherLoading(true);
-    setStitcherResult('');
-
-    try {
-      const res = await fetch(`${API_BASE}/api/composite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_image_base64: stitcherBaseImage,
-          banner_base64: stitcherBanner,
-          mask_x: stitcherCoords ? stitcherCoords.mask_x : undefined,
-          mask_y: stitcherCoords ? stitcherCoords.mask_y : undefined,
-          mask_w: stitcherCoords ? stitcherCoords.mask_w : undefined,
-          mask_h: stitcherCoords ? stitcherCoords.mask_h : undefined
-        })
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setStitcherResult(data.composited_image);
-      } else {
-        alert(data.error || 'Failed to auto-stitch images. Make sure the venue image has a distinct white screen.');
-      }
-    } catch (err) {
-      console.error('Instant stitch error:', err);
-      alert('Stitching request failed.');
-    } finally {
-      setStitcherLoading(false);
-    }
-  };
-
-  // Open data URL base64 image in a new tab securely via document.write
-  const openImage = (url: string) => {
-    if (!url) return;
-    if (url.startsWith('data:')) {
-      const newTab = window.open();
-      if (newTab) {
-        newTab.document.write(`
-          <html>
-            <head>
-              <title>Eventelligence Layout Preview</title>
-              <style>
-                body { margin: 0; background: #0f172a; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: sans-serif; color: #94a3b8; }
-                .container { text-align: center; max-width: 95vw; }
-                img { max-width: 100%; max-height: 90vh; object-fit: contain; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-radius: 8px; border: 1px solid #334155; }
-                p { margin-top: 15px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; font-weight: bold; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <img src="${url}" alt="Eventelligence layout render" />
-                <p>Eventelligence Layout Preview</p>
-              </div>
-            </body>
-          </html>
-        `);
-        newTab.document.close();
-      }
-    } else {
-      window.open(url, '_blank');
-    }
-  };
-
-  // Handle generation call
-  const triggerAIGeneration = async () => {
-    if (!selectedVenueId || !selectedHallId) return;
-
-    setGenerating(true);
-    setResult(null);
-    setGenerationLogs([]);
-
-    const logList = [
-      'Sending dynamic coordinates to prompt engineering API...',
-      'Mapping building ceiling height limit of ' + (activeHall?.height || 8) + 'm...',
-      'Scaling stage blueprint: ' + stageWidth + 'm width x ' + stageLength + 'm depth...',
-      'Applying theme accents ' + themeColors.join('/') + '...',
-      'Generating realistic crowd seating rows for ' + seatingCount + ' pax...',
-      'Injecting vectors for sponsors: ' + (activeBranding?.logos?.join(', ') || 'Custom Brand') + '...',
-      'Rendering final visual layout using OpenAI DALL-E...'
-    ];
-
-    for (let i = 0; i < logList.length; i++) {
-      await new Promise(r => setTimeout(r, 450));
-      setGenerationLogs(prev => [...prev, logList[i]]);
-    }
-
-    try {
-      const payload = {
-        venue_id: Number(selectedVenueId),
-        hall_id: Number(selectedHallId),
-        stage_width: stageWidth,
-        stage_length: stageLength,
-        stage_height: stageHeight,
-        stage_finish: selectedStageTemplate,
-        seating_style: selectedSeatingTemplate,
-        seating_count: seatingCount,
-        branding_template_id: selectedBrandingId ? Number(selectedBrandingId) : null,
-        event_name: eventName,
-        event_date: eventDate,
-        theme_colors: themeColors,
-        custom_prompt_addon: customDirectives,
-        gemini_api_key: geminiApiKey
-      };
-
-      const res = await fetch(`${API_BASE}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        setResult(data);
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (error) {
-      // Fallback
-      setResult({
-        image_url: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=1200&q=80',
-        prompt: `Photorealistic 3D visualization render of "${eventName}" inside ${activeVenue?.name} - ${activeHall?.name}. Staging size ${stageWidth}x${stageLength}m.`,
-        metadata: { engine: 'DALL-E 3 (Fallback)', resolution: '1024x1024' }
-      });
-    } finally {
-      setGenerating(false);
-    }
-  };
-
+// ─── Step Indicator ───────────────────────────────────────────────────────────
+function StepIndicator({ current }: { current: number }) {
   return (
-    <div className="min-h-screen bg-white text-slate-800 font-sans antialiased">
-      {/* Header Bar */}
-      <header className="border-b border-slate-200 bg-white sticky top-0 z-30 px-6 py-4 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center">
-            <Sparkles className="w-4.5 h-4.5 text-white" />
+    <div className="flex items-center justify-center gap-0 mb-10">
+      {STEP_LABELS.map((label, i) => (
+        <React.Fragment key={i}>
+          <div className="flex flex-col items-center">
+            <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-300 ${i < current ? 'bg-blue-600 text-white' : i === current ? 'bg-blue-600 text-white ring-4 ring-blue-100' : 'bg-slate-100 text-slate-400'}`}>
+              {i < current ? <Check className="w-4 h-4" /> : i + 1}
+            </div>
+            <span className={`text-[11px] mt-1.5 font-semibold tracking-wide ${i === current ? 'text-blue-600' : 'text-slate-400'}`}>{label}</span>
           </div>
-          <div>
-            <h1 className="font-display font-bold text-lg text-slate-900 leading-none">Eventelligence</h1>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 mt-0.5 block">Client Configurator</span>
-          </div>
-        </div>
+          {i < STEP_LABELS.length - 1 && (
+            <div className={`h-0.5 w-16 mx-1 mb-5 transition-all duration-500 ${i < current ? 'bg-blue-600' : 'bg-slate-200'}`} />
+          )}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
 
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gemini Key:</span>
-            <input 
-              type="password" 
-              value={geminiApiKey} 
-              onChange={(e) => handleKeyChange(e.target.value)} 
-              placeholder="Paste Gemini API Key..." 
-              className="text-xs bg-slate-50 border border-slate-200 p-2 px-3 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800 w-44" 
-            />
+// ─── SelectCard ──────────────────────────────────────────────────────────────
+function SelectCard({ label, sub, selected, onClick, icon }: { label: string; sub?: string; selected: boolean; onClick: () => void; icon?: React.ReactNode; }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left p-4 rounded-xl border-2 transition-all duration-200 flex items-start gap-3 group ${selected ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/50'}`}
+    >
+      {icon && <div className={`mt-0.5 shrink-0 ${selected ? 'text-blue-600' : 'text-slate-400 group-hover:text-blue-500'}`}>{icon}</div>}
+      <div className="min-w-0">
+        <p className={`text-sm font-semibold ${selected ? 'text-blue-700' : 'text-slate-700'}`}>{label}</p>
+        {sub && <p className={`text-xs mt-0.5 truncate ${selected ? 'text-blue-500' : 'text-slate-400'}`}>{sub}</p>}
+      </div>
+      {selected && <Check className="w-4 h-4 text-blue-600 ml-auto shrink-0 mt-0.5" />}
+    </button>
+  );
+}
+
+// ─── StyleCard ────────────────────────────────────────────────────────────────
+function StyleCard({ label, emoji, selected, onClick }: { label: string; emoji: string; selected: boolean; onClick: () => void; }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`p-4 rounded-2xl border-2 transition-all duration-200 flex flex-col items-center gap-2 text-center group ${selected ? 'border-blue-500 bg-blue-50 shadow-md shadow-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'}`}
+    >
+      <span className="text-3xl">{emoji}</span>
+      <span className={`text-xs font-semibold leading-tight ${selected ? 'text-blue-700' : 'text-slate-600'}`}>{label}</span>
+      {selected && <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center"><Check className="w-2.5 h-2.5 text-white" /></div>}
+    </button>
+  );
+}
+
+const STAGE_EMOJIS: Record<string, string> = {
+  'Royal Staggered Wood Set': '🏛️',
+  'Seamless Gloss Acrylic Set': '💎',
+  'LED Digital Backdrop Truss': '🎆',
+  'Natural Bamboo & Floral': '🌿',
+  'Minimalist White Riser': '⬜',
+};
+const SEATING_EMOJIS: Record<string, string> = {
+  'Theatre Rows Layout': '🎭',
+  'Cluster Round Tables (Banquet)': '🍽️',
+  'Classroom Desks Layout': '📚',
+  'U-Shape Conference': '🤝',
+  'Cocktail Standing': '🥂',
+};
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+export default function HomePage() {
+  const [step, setStep] = useState(0);
+
+  // Step 0 — Venue selection
+  const [cities,     setCities]     = useState<City[]>([]);
+  const [venues,     setVenues]     = useState<Venue[]>([]);
+  const [halls,      setHalls]      = useState<Hall[]>([]);
+  const [selCity,    setSelCity]    = useState<City | null>(null);
+  const [selVenue,   setSelVenue]   = useState<Venue | null>(null);
+  const [selHall,    setSelHall]    = useState<Hall | null>(null);
+  const [loadingVenues, setLoadingVenues] = useState(false);
+  const [loadingHalls,  setLoadingHalls]  = useState(false);
+
+  // Step 1 — Event setup
+  const [stages,    setStages]    = useState<Template[]>([]);
+  const [seatings,  setSeatings]  = useState<Template[]>([]);
+  const [selStage,  setSelStage]  = useState<Template | null>(null);
+  const [selSeating,setSelSeating]= useState<Template | null>(null);
+
+  // Step 2 — Branding
+  const [brandings,    setBrandings]    = useState<Branding[]>([]);
+  const [selBranding,  setSelBranding]  = useState<Branding | null>(null);
+  const [eventName,    setEventName]    = useState('');
+  const [eventDate,    setEventDate]    = useState('');
+  const [bannerFile,   setBannerFile]   = useState<File | null>(null);
+  const [bannerPreview,setBannerPreview]= useState('');
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  // Step 3 — Generate
+  const [generating, setGenerating] = useState(false);
+  const [resultImage, setResultImage] = useState('');
+  const [genError,    setGenError]    = useState('');
+
+  // ── Data Loaders ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetch('/api/cities').then(r => r.json()).then(d => setCities(Array.isArray(d) ? d : []));
+    fetch('/api/templates').then(r => r.json()).then(d => {
+      setStages(Array.isArray(d.stages) ? d.stages : []);
+      setSeatings(Array.isArray(d.seatings) ? d.seatings : []);
+    });
+    fetch('/api/brandings').then(r => r.json()).then(d => setBrandings(Array.isArray(d) ? d : []));
+  }, []);
+
+  useEffect(() => {
+    if (!selCity) { setVenues([]); setSelVenue(null); setHalls([]); setSelHall(null); return; }
+    setLoadingVenues(true);
+    fetch(`/api/venues?cityId=${selCity.id}`).then(r => r.json()).then(d => {
+      setVenues(Array.isArray(d) ? d : []);
+      setSelVenue(null); setHalls([]); setSelHall(null);
+      setLoadingVenues(false);
+    });
+  }, [selCity]);
+
+  useEffect(() => {
+    if (!selVenue) { setHalls([]); setSelHall(null); return; }
+    setLoadingHalls(true);
+    fetch(`/api/halls?venueId=${selVenue.id}`).then(r => r.json()).then(d => {
+      setHalls(Array.isArray(d) ? d : []);
+      setSelHall(null);
+      setLoadingHalls(false);
+    });
+  }, [selVenue]);
+
+  // ── Banner handler ─────────────────────────────────────────────────────────
+  const handleBanner = (file: File) => {
+    setBannerFile(file);
+    setBannerPreview(URL.createObjectURL(file));
+  };
+
+  // ── Generate ───────────────────────────────────────────────────────────────
+  const generate = async () => {
+    if (!selHall || !bannerFile) return;
+    setGenerating(true);
+    setGenError('');
+    setResultImage('');
+
+    try {
+      const fd = new FormData();
+      fd.append('hallId',    String(selHall.id));
+      fd.append('eventName', eventName);
+      fd.append('eventDate', eventDate);
+      fd.append('bannerImage', bannerFile);
+
+      const r = await fetch('/api/generate-visualization', { method: 'POST', body: fd });
+      const data = await r.json();
+
+      if (!r.ok) throw new Error(data.error || 'Generation failed');
+      setResultImage(data.imageBase64);
+    } catch (e: any) {
+      setGenError(e.message || 'Unknown error occurred');
+    }
+    setGenerating(false);
+  };
+
+  // ── Validation ─────────────────────────────────────────────────────────────
+  const canGoNext = () => {
+    if (step === 0) return !!selHall;
+    if (step === 1) return !!selStage && !!selSeating;
+    if (step === 2) return !!selBranding && !!eventName.trim() && !!bannerFile;
+    return true;
+  };
+
+  const next = () => { if (canGoNext()) setStep(s => Math.min(s + 1, 3)); };
+  const back = () => setStep(s => Math.max(s - 1, 0));
+
+  // ── Download ───────────────────────────────────────────────────────────────
+  const download = () => {
+    const a = document.createElement('a');
+    a.href = resultImage;
+    a.download = `${eventName || 'eventelligence'}-visualization.png`;
+    a.click();
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* Nav */}
+      <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-200/60 shadow-sm">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-base font-extrabold text-slate-900 tracking-tight leading-none">Eventelligence</h1>
+              <p className="text-[10px] text-slate-400 tracking-widest uppercase">Event Visualization Platform</p>
+            </div>
           </div>
-          <a href="/admin" className="text-xs font-bold uppercase tracking-wider text-slate-500 hover:text-slate-900 transition">
-            Admin Master Data
+          <a href="/admin" className="text-xs font-medium text-slate-500 hover:text-blue-600 border border-slate-200 hover:border-blue-300 px-3 py-1.5 rounded-lg transition">
+            Admin Panel
           </a>
         </div>
-      </header>
+      </nav>
 
-      {/* Main Grid Wrapper */}
-      <main className="max-w-6xl mx-auto px-6 py-12 flex flex-col gap-10">
-        
-        {/* Tab Selector Mode Toggler */}
-        <div className="flex border border-slate-200 p-1 rounded-lg bg-slate-50/50 self-start">
-          <button 
-            type="button"
-            onClick={() => setActiveMode('wizard')}
-            className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition ${
-              activeMode === 'wizard' 
-                ? 'bg-slate-900 text-white shadow-sm' 
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Custom Event Configurator
-          </button>
-          <button 
-            type="button"
-            onClick={() => setActiveMode('stitcher')}
-            className={`px-4 py-2 rounded-md text-xs font-bold uppercase tracking-wider transition ${
-              activeMode === 'stitcher' 
-                ? 'bg-slate-900 text-white shadow-sm' 
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            Instant Auto-Stitcher
-          </button>
+      <main className="max-w-3xl mx-auto px-4 py-12">
+        {/* Hero */}
+        <div className="text-center mb-12">
+          <span className="inline-block bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full tracking-widest uppercase mb-4">AI Powered</span>
+          <h2 className="text-4xl font-extrabold text-slate-900 leading-tight mb-3">
+            Visualize Your Event<br />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">Before It Happens</span>
+          </h2>
+          <p className="text-slate-500 text-base max-w-xl mx-auto">Upload your banner and we'll overlay it perfectly on your chosen venue hall's real backdrop.</p>
         </div>
 
-        {activeMode === 'wizard' ? (
-          <>
-            {/* Progress Navigation Tracker */}
-            <nav aria-label="Progress tracker" className="flex justify-between items-center border border-slate-200 rounded-xl p-3 bg-white max-w-lg">
-          <div className="flex items-center gap-6 pl-2">
-            {[1, 2, 3].map(step => (
-              <button 
-                key={step} 
-                onClick={() => currentStep >= step && setCurrentStep(step)}
-                disabled={step === 3 && (!selectedVenueId || !selectedHallId)}
-                className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition ${
-                  currentStep === step ? 'text-slate-900' : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] border ${
-                  currentStep === step ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200'
-                }`}>
-                  {step}
-                </span>
-                Step {step}
-              </button>
-            ))}
-          </div>
-          <span className="text-[11px] font-bold text-slate-400 bg-slate-100 border border-slate-200/50 rounded-full px-2.5 py-0.5">
-            {currentStep === 1 && 'Location'}
-            {currentStep === 2 && 'Staging & Layout'}
-            {currentStep === 3 && 'AI Visualization'}
-          </span>
-        </nav>
+        {/* Card */}
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200/60 p-8">
+          <StepIndicator current={step} />
 
-        {/* Dynamic Wizard Steps */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start">
-          
-          {/* Form parameters side */}
-          <section className="lg:col-span-2 space-y-8">
-            
-            {/* Step 1: Sequential Venue Selectors */}
-            {currentStep === 1 && (
-              <div className="border border-slate-200 rounded-2xl bg-white p-8 space-y-6">
+          {/* ── STEP 0: Venue Selection ──────────────────────────────────── */}
+          {step === 0 && (
+            <div className="space-y-6 animate-fade-in">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-blue-500" /> Select Your Venue
+              </h3>
+
+              {/* City */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">1. Choose City</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {cities.map(c => (
+                    <SelectCard
+                      key={c.id}
+                      label={c.name}
+                      sub={c.state}
+                      selected={selCity?.id === c.id}
+                      onClick={() => setSelCity(c)}
+                      icon={<MapPin className="w-4 h-4" />}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Venue */}
+              {selCity && (
                 <div>
-                  <h2 className="font-display font-bold text-xl text-slate-900">Event Location Details</h2>
-                  <p className="text-slate-500 text-xs mt-1">Select location options dynamically sourced directly from the database schema.</p>
-                </div>
-
-                {/* 1. City Select */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">1. Select City</label>
-                  <div className="flex flex-wrap gap-2">
-                    {cities.map(c => (
-                      <button 
-                        key={c.id}
-                        onClick={() => setSelectedCityId(c.id)}
-                        className={`px-4 py-2 border rounded-lg text-xs font-semibold uppercase tracking-wider transition ${
-                          selectedCityId === c.id 
-                            ? 'bg-slate-100 border-slate-900 text-slate-900 font-bold' 
-                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-400'
-                        }`}
-                      >
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 2. Venue Cascade Select */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">2. Select Venue</label>
-                  {fetchingVenues ? (
-                    <div className="py-4 flex items-center gap-2 text-xs text-slate-400">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Querying city venues...
-                    </div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">2. Choose Venue</label>
+                  {loadingVenues ? (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm py-4"><Loader2 className="w-4 h-4 animate-spin" /> Loading venues…</div>
                   ) : venues.length === 0 ? (
-                    <p className="text-xs italic text-slate-400">No venues configured in this city. Go to Admin Panel to add one.</p>
+                    <p className="text-slate-400 text-sm py-4">No venues in {selCity.name} yet.</p>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
                       {venues.map(v => (
-                        <div 
-                          key={v.id}
-                          onClick={() => setSelectedVenueId(v.id)}
-                          className={`p-4 border rounded-xl cursor-pointer transition ${
-                            selectedVenueId === v.id 
-                              ? 'border-slate-900 bg-slate-50 text-slate-900' 
-                              : 'border-slate-200 bg-white hover:border-slate-350'
-                          }`}
-                        >
-                          <span className="font-semibold text-xs text-slate-800 block">{v.name}</span>
-                          <span className="text-[10px] text-slate-450 mt-1 block">{v.address}</span>
-                        </div>
+                        <SelectCard key={v.id} label={v.name} sub={v.address} selected={selVenue?.id === v.id} onClick={() => setSelVenue(v)} icon={<Building2 className="w-4 h-4" />} />
                       ))}
                     </div>
                   )}
                 </div>
+              )}
 
-                {/* 3. Hall Cascade Select */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">3. Select Exhibition Room / Ballroom</label>
-                  {fetchingHalls ? (
-                    <div className="py-4 flex items-center gap-2 text-xs text-slate-400">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Pulling venue halls...
-                    </div>
+              {/* Hall */}
+              {selVenue && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">3. Choose Hall</label>
+                  {loadingHalls ? (
+                    <div className="flex items-center gap-2 text-slate-400 text-sm py-4"><Loader2 className="w-4 h-4 animate-spin" /> Loading halls…</div>
                   ) : halls.length === 0 ? (
-                    <p className="text-xs italic text-slate-400">No event rooms configured under this venue. Go to Admin Panel to add halls.</p>
+                    <p className="text-slate-400 text-sm py-4">No halls configured for this venue.</p>
                   ) : (
                     <div className="space-y-2">
                       {halls.map(h => (
-                        <div 
+                        <SelectCard
                           key={h.id}
-                          onClick={() => {
-                            setSelectedHallId(h.id);
-                            setSeatingCount(h.capacity);
-                          }}
-                          className={`p-4 border rounded-xl cursor-pointer flex justify-between items-center transition ${
-                            selectedHallId === h.id 
-                              ? 'border-slate-900 bg-slate-50 text-slate-900' 
-                              : 'border-slate-200 bg-white hover:border-slate-300'
-                          }`}
-                        >
-                          <div>
-                            <span className="font-semibold text-xs text-slate-800 block">{h.name}</span>
-                            <span className="text-[10px] text-slate-400 mt-1 block uppercase font-bold tracking-wider">
-                              Dimensions: {h.width}m x {h.length}m (Height Limit: {h.height}m)
-                            </span>
+                          label={h.name}
+                          sub={`${h.length}m × ${h.width}m · Capacity: ${h.capacity}`}
+                          selected={selHall?.id === h.id}
+                          onClick={() => setSelHall(h)}
+                          icon={<Layers className="w-4 h-4" />}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {/* Hall preview */}
+                  {selHall?.baseImageUrl && (
+                    <div className="mt-4 rounded-2xl overflow-hidden border border-slate-200 shadow-sm">
+                      <div className="relative">
+                        <img src={selHall.baseImageUrl} alt={selHall.name} className="w-full h-48 object-cover" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                        <div className="absolute bottom-3 left-3 text-white">
+                          <p className="font-bold text-sm">{selHall.name}</p>
+                          <p className="text-xs opacity-80">{selVenue.name}</p>
+                        </div>
+                        {selHall.maskWidth > 0 && (
+                          <div className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Screen zone configured
                           </div>
-                          <span className="text-[11px] font-semibold text-slate-500 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                            {h.capacity} Max Pax
-                          </span>
-                        </div>
-                      ))}
+                        )}
+                        {!selHall.maskWidth && (
+                          <div className="absolute top-2 right-2 bg-amber-500 text-white text-[10px] font-bold px-2 py-1 rounded-full">
+                            ⚠ No screen zone
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Step 2: Dynamic Template Setup (Stage & Seating) */}
-            {currentStep === 2 && (
-              <div className="border border-slate-200 rounded-2xl bg-white p-8 space-y-8">
-                <div>
-                  <h2 className="font-display font-bold text-xl text-slate-900">Stage & Seating Presets</h2>
-                  <p className="text-slate-500 text-xs mt-1">Values and arrangements are loaded live from the active templates library.</p>
-                </div>
-
-                {/* Stage template select */}
-                <div className="space-y-3">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Staging Finish & Style</label>
-                  <div className="flex flex-wrap gap-2">
-                    {stageTemplates.map(st => (
-                      <button 
-                        key={st.id}
-                        onClick={() => setSelectedStageTemplate(st.value)}
-                        className={`px-4 py-2 border rounded-lg text-xs font-semibold transition ${
-                          selectedStageTemplate === st.value 
-                            ? 'bg-slate-100 border-slate-900 text-slate-900' 
-                            : 'bg-white border-slate-200 text-slate-500 hover:border-slate-350'
-                        }`}
-                      >
-                        {st.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Stage dimension sliders */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Width */}
-                  <div className="space-y-1.5 p-4 border border-slate-200 rounded-xl">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400 font-bold uppercase tracking-wider">Stage Width</span>
-                      <span className="font-semibold text-slate-800">{stageWidth}m</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="6" 
-                      max="32" 
-                      value={stageWidth} 
-                      onChange={(e) => setStageWidth(Number(e.target.value))}
-                      className="w-full h-1 bg-slate-200 rounded appearance-none cursor-pointer accent-slate-900"
-                    />
-                  </div>
-
-                  {/* Length */}
-                  <div className="space-y-1.5 p-4 border border-slate-200 rounded-xl">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400 font-bold uppercase tracking-wider">Stage Depth</span>
-                      <span className="font-semibold text-slate-800">{stageLength}m</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="4" 
-                      max="14" 
-                      value={stageLength} 
-                      onChange={(e) => setStageLength(Number(e.target.value))}
-                      className="w-full h-1 bg-slate-200 rounded appearance-none cursor-pointer accent-slate-900"
-                    />
-                  </div>
-
-                  {/* Height */}
-                  <div className="space-y-1.5 p-4 border border-slate-200 rounded-xl">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-slate-400 font-bold uppercase tracking-wider">Stage Height</span>
-                      <span className="font-semibold text-slate-800">{stageHeight}m</span>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="0.3" 
-                      max="2.1" 
-                      step="0.3"
-                      value={stageHeight} 
-                      onChange={(e) => setStageHeight(Number(e.target.value))}
-                      className="w-full h-1 bg-slate-200 rounded appearance-none cursor-pointer accent-slate-900"
-                    />
-                  </div>
-                </div>
-
-                {/* Seating presets */}
-                <div className="space-y-3">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Seating Architecture Arrangement</label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {seatingTemplates.map(seat => (
-                      <div 
-                        key={seat.id}
-                        onClick={() => setSelectedSeatingTemplate(seat.value)}
-                        className={`p-4 border rounded-xl cursor-pointer text-center space-y-1.5 transition ${
-                          selectedSeatingTemplate === seat.value 
-                            ? 'border-slate-900 bg-slate-50 text-slate-900' 
-                            : 'border-slate-200 bg-white hover:border-slate-350'
-                        }`}
-                      >
-                        <span className="text-xs font-bold block">{seat.value} Layout</span>
-                        <span className="text-[10px] text-slate-400 block">{seat.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Audience total count slider */}
-                <div className="space-y-2 max-w-sm">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Target Seating Attendance ({seatingCount} pax)</label>
-                  <input 
-                    type="range" 
-                    min="50" 
-                    max={activeHall ? activeHall.capacity : 1000} 
-                    step="50"
-                    value={seatingCount}
-                    onChange={(e) => setSeatingCount(Number(e.target.value))}
-                    className="w-full h-1 bg-slate-200 rounded appearance-none cursor-pointer accent-slate-900"
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-450 font-bold uppercase tracking-wider">
-                    <span>Min: 50 Pax</span>
-                    <span>Max Hall Limit: {activeHall ? activeHall.capacity : 'Unknown'} Pax</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Trigger & Summary Output */}
-            {currentStep === 3 && (
-              <div className="border border-slate-200 rounded-2xl bg-white p-8 space-y-8">
-                <div>
-                  <h2 className="font-display font-bold text-xl text-slate-900">AI Visualizer & Execution Panel</h2>
-                  <p className="text-slate-500 text-xs mt-1">Review your consolidated details before running the DALL-E rendering trigger.</p>
-                </div>
-
-                {/* Setup Details Forms */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Event Title</label>
-                    <input 
-                      type="text" 
-                      value={eventName}
-                      onChange={(e) => setEventName(e.target.value)}
-                      className="w-full text-xs font-semibold bg-white border border-slate-200 p-3 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800"
-                      required
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Launch Date</label>
-                    <input 
-                      type="date" 
-                      value={eventDate}
-                      onChange={(e) => setEventDate(e.target.value)}
-                      className="w-full text-xs font-semibold bg-white border border-slate-200 p-3 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800"
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Branding Template Dynamic Option */}
-                <div className="space-y-2">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Select Sponsor Branding Template</label>
-                  <select
-                    value={selectedBrandingId}
-                    onChange={(e) => setSelectedBrandingId(e.target.value ? Number(e.target.value) : '')}
-                    className="w-full text-xs font-semibold bg-white border border-slate-200 p-3 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800"
-                  >
-                    {brandings.map(b => (
-                      <option key={b.id} value={b.id}>{b.name} ({b.logos.join(', ')})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Preset Themes Select */}
-                <div className="space-y-3">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Theme Color Accents</label>
-                  <div className="flex gap-2">
-                    {themePresets.map(theme => {
-                      const isSelected = themeColors.includes(theme.value);
-                      return (
-                        <button 
-                          key={theme.id}
-                          type="button"
-                          onClick={() => {
-                            if (theme.value === 'Gold/Navy') setThemeColors(['#1e3a8a', '#d97706']);
-                            if (theme.value === 'Silver/Cyan') setThemeColors(['#475569', '#0891b2']);
-                            if (theme.value === 'Emerald Green') setThemeColors(['#065f46', '#0f766e']);
-                          }}
-                          className={`px-4 py-2 border rounded-lg text-xs font-semibold transition ${
-                            themeColors[0] === (theme.value === 'Gold/Navy' ? '#1e3a8a' : theme.value === 'Silver/Cyan' ? '#475569' : '#065f46')
-                              ? 'bg-slate-100 border-slate-900 text-slate-900' 
-                              : 'bg-white border-slate-200 text-slate-500 hover:border-slate-350'
-                          }`}
-                        >
-                          {theme.name}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Directives */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Extra Design Instructions (Optional)</label>
-                  <textarea 
-                    value={customDirectives}
-                    onChange={(e) => setCustomDirectives(e.target.value)}
-                    placeholder="e.g. Add branding backdrop logos, white carpet staging, blue uplighting on structural columns..."
-                    className="w-full text-xs font-medium bg-white border border-slate-200 p-3 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800 h-20"
-                  />
-                </div>
-
-                {/* Smart Banner Compositing File Uploader */}
-                <div className="space-y-3 p-5 border border-slate-250/60 rounded-xl bg-slate-50/40">
-                  <div>
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Smart Backdrop Screen Compositing</h4>
-                    <p className="text-[10px] text-slate-500 mt-0.5">Upload a custom event banner to stitch it automatically onto the venue backdrop screen.</p>
-                  </div>
-                  <div className="flex flex-col gap-3">
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleBannerUpload}
-                      disabled={compositing}
-                      className="text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white file:cursor-pointer hover:file:bg-slate-800 disabled:opacity-50"
-                    />
-                    
-                    {compositing && (
-                      <div className="flex items-center gap-2 text-xs text-slate-500 py-1">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        Compositing image using Sharp overlay coordinates...
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Trigger box */}
-                {!result && !generating && (
-                  <div className="p-6 border border-dashed border-slate-200 rounded-xl text-center space-y-4">
-                    <span className="text-xs font-medium text-slate-400 block">Ready to compile coordinates and execute generation pipeline.</span>
-                    <button 
-                      onClick={triggerAIGeneration}
-                      className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm transition"
-                    >
-                      Trigger AI Visualization
-                    </button>
-                  </div>
-                )}
-
-                {/* Logs console */}
-                {generating && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2.5 p-4 border border-slate-200 bg-slate-50 rounded-xl text-xs text-slate-600">
-                      <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-                      <span>Synthesizing photographic event render layout...</span>
-                    </div>
-
-                    <div className="p-4 bg-slate-900 rounded-xl font-mono text-[10px] text-slate-400 space-y-1 max-h-36 overflow-y-auto">
-                      {generationLogs.map((log, i) => (
-                        <div key={i} className="flex gap-2">
-                          <span className="text-slate-500">&gt;</span>
-                          <span>{log}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Output Screen */}
-                {(result || compositeResult) && (
-                  <div className="space-y-4 animate-fade">
-                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50">
-                      <img src={compositeResult ? compositeResult.composited_image : result.image_url} alt="" className="w-full h-72 object-cover" />
-                      <div className="p-4 border-t border-slate-200 flex justify-between items-center gap-4 bg-white">
-                        <div>
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            {compositeResult ? 'Smart Banner Composited Layout' : 'AI Layout Rendering'}
-                          </span>
-                          <span className="font-bold text-xs block text-slate-800 mt-0.5">{eventName}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => openImage(compositeResult ? compositeResult.composited_image : result.image_url)} 
-                            className="p-2 border border-slate-200 hover:border-slate-350 bg-white rounded-lg text-slate-600 transition"
-                          >
-                            <ExternalLink className="w-4.5 h-4.5" />
-                          </button>
-                          <button 
-                            onClick={() => openImage(compositeResult ? compositeResult.composited_image : result.image_url)}
-                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider"
-                          >
-                            Download Layout
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {!compositeResult && (
-                      <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-500 font-mono leading-relaxed">
-                        <span className="font-bold block uppercase tracking-wider text-[9px] mb-1">Engineered Prompt Parameters</span>
-                        {result.prompt}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-
-          {/* Dynamic Configuration Recap Sidebar (Right 1/3) */}
-          <aside className="border border-slate-200 bg-slate-50/50 rounded-2xl p-6 space-y-6">
-            <div>
-              <h3 className="font-semibold text-sm text-slate-900">Event Configuration</h3>
-              <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-0.5">Recap & Dynamic Constraints</p>
-            </div>
-
-            <div className="space-y-5">
-              {/* City & Venue */}
-              <div className="flex gap-3 text-xs">
-                <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px] block">Location</span>
-                  <span className="font-semibold text-slate-700 block">
-                    {activeCity ? activeCity.name : 'Not selected'}
-                  </span>
-                  <span className="text-slate-500 block mt-0.5">
-                    {activeVenue ? activeVenue.name : 'No Venue'} • {activeHall ? activeHall.name : 'No Hall'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Staging */}
-              <div className="flex gap-3 text-xs">
-                <Sliders className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px] block">Staging</span>
-                  <span className="font-semibold text-slate-700 block uppercase">
-                    {selectedStageTemplate || 'Not configured'}
-                  </span>
-                  {selectedStageTemplate && (
-                    <span className="text-slate-500 block mt-0.5">
-                      Size: {stageWidth}m(W) x {stageLength}m(D) x {stageHeight}m(H)
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Seating */}
-              <div className="flex gap-3 text-xs">
-                <Users className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px] block">Seating setup</span>
-                  <span className="font-semibold text-slate-700 block">
-                    {selectedSeatingTemplate ? `${selectedSeatingTemplate} layout` : 'Not selected'}
-                  </span>
-                  {selectedSeatingTemplate && (
-                    <span className="text-slate-500 block mt-0.5">
-                      Target Capacity: {seatingCount.toLocaleString()} Seats
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Branding */}
-              <div className="flex gap-3 text-xs">
-                <Palette className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-slate-400 uppercase tracking-widest text-[9px] block">Accents & Branding</span>
-                  <span className="font-semibold text-slate-700 block">
-                    {activeBranding ? activeBranding.name : 'None selected'}
-                  </span>
-                  {themeColors.length > 0 && (
-                    <div className="flex items-center gap-1 mt-1">
-                      <div className="w-3.5 h-3.5 rounded border border-slate-350" style={{ backgroundColor: themeColors[0] }} />
-                      <div className="w-3.5 h-3.5 rounded border border-slate-350" style={{ backgroundColor: themeColors[1] }} />
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Action buttons strip */}
-            <div className="flex justify-between items-center border-t border-slate-200 pt-6 mt-6">
-              <button 
-                onClick={() => currentStep > 1 && setCurrentStep(currentStep - 1)}
-                disabled={currentStep === 1 || generating}
-                className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-slate-800 disabled:opacity-30 disabled:pointer-events-none transition"
-              >
-                <ChevronLeft className="w-4.5 h-4.5" />
-                Back
-              </button>
-
-              {currentStep < 3 ? (
-                <button 
-                  onClick={() => setCurrentStep(currentStep + 1)}
-                  disabled={currentStep === 1 && (!selectedVenueId || !selectedHallId)}
-                  className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-slate-800 hover:text-slate-900 transition disabled:opacity-30"
-                >
-                  Next
-                  <ChevronRight className="w-4.5 h-4.5" />
-                </button>
-              ) : (
-                <button 
-                  onClick={triggerAIGeneration}
-                  disabled={generating || !selectedVenueId || !selectedHallId}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition disabled:opacity-40"
-                >
-                  {generating ? 'Running...' : 'Generate'}
-                </button>
               )}
             </div>
-          </aside>
-        </div>
-          </>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start">
-            {/* Upload form container */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="border border-slate-200 rounded-2xl bg-white p-8 space-y-8">
+          )}
+
+          {/* ── STEP 1: Event Setup ──────────────────────────────────────── */}
+          {step === 1 && (
+            <div className="space-y-8 animate-fade-in">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Layout className="w-5 h-5 text-blue-500" /> Event Setup
+              </h3>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-3">Stage Style</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {stages.map(s => (
+                    <StyleCard key={s.id} label={s.name} emoji={STAGE_EMOJIS[s.name] || '🎪'} selected={selStage?.id === s.id} onClick={() => setSelStage(s)} />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-3">Seating Arrangement</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                  {seatings.map(s => (
+                    <StyleCard key={s.id} label={s.name} emoji={SEATING_EMOJIS[s.name] || '💺'} selected={selSeating?.id === s.id} onClick={() => setSelSeating(s)} />
+                  ))}
+                </div>
+              </div>
+
+              {selStage && selSeating && (
+                <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-sm text-blue-700 flex items-center gap-2">
+                  <Check className="w-4 h-4 text-blue-500 shrink-0" />
+                  <span><b>{selStage.name}</b> stage with <b>{selSeating.name}</b> seating</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── STEP 2: Branding & Details ───────────────────────────────── */}
+          {step === 2 && (
+            <div className="space-y-6 animate-fade-in">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Star className="w-5 h-5 text-blue-500" /> Branding & Event Details
+              </h3>
+
+              {/* Branding template */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Select Branding Package</label>
+                <div className="space-y-2">
+                  {brandings.map(b => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setSelBranding(b)}
+                      className={`w-full text-left p-4 rounded-xl border-2 transition-all ${selBranding?.id === b.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-200'}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className={`text-sm font-semibold ${selBranding?.id === b.id ? 'text-blue-700' : 'text-slate-700'}`}>{b.templateName}</p>
+                        {selBranding?.id === b.id && <Check className="w-4 h-4 text-blue-600" />}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {b.logos.map(l => (
+                          <span key={l.id} className="bg-slate-100 text-slate-500 text-[11px] px-2 py-0.5 rounded-full">{l.logoName}</span>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Event Name & Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <h2 className="font-display font-bold text-xl text-slate-900">Instant Screen Compositer</h2>
-                  <p className="text-slate-500 text-xs mt-1">Upload any venue base image with a white screen, drop your event banner, and auto-stitch them instantly.</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Uploader A: Base image */}
-                  <div className="space-y-3 p-5 border border-dashed border-slate-200 rounded-xl bg-slate-50/30 text-center flex flex-col items-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Step 1: Venue Backdrop Photo (with white screen)</span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleStitcherBaseUpload}
-                      className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white file:cursor-pointer hover:file:bg-slate-800 w-full"
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Name *</label>
+                  <div className="relative">
+                    <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      placeholder="e.g. MSME Summit 2025"
+                      value={eventName}
+                      onChange={e => setEventName(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                     />
-                    {stitcherBaseImage && (
-                      <div className="relative rounded-lg overflow-hidden border border-slate-200 w-full h-32 mt-2">
-                        <img src={stitcherBaseImage} alt="Base backdrop" className="w-full h-full object-cover" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Uploader B: Banner */}
-                  <div className="space-y-3 p-5 border border-dashed border-slate-200 rounded-xl bg-slate-50/30 text-center flex flex-col items-center">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Step 2: Event Banner Poster</span>
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      onChange={handleStitcherBannerUpload}
-                      className="text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white file:cursor-pointer hover:file:bg-slate-800 w-full"
-                    />
-                    {stitcherBanner && (
-                      <div className="relative rounded-lg overflow-hidden border border-slate-200 w-full h-32 mt-2">
-                        <img src={stitcherBanner} alt="Banner" className="w-full h-full object-cover" />
-                      </div>
-                    )}
                   </div>
                 </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Date</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="date"
+                      value={eventDate}
+                      onChange={e => setEventDate(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    />
+                  </div>
+                </div>
+              </div>
 
-                {stitcherBaseImage && stitcherBanner && !stitcherLoading && (
-                  <div className="space-y-6">
-                    <div className="border border-slate-200 rounded-xl p-5 bg-white space-y-3 text-left">
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider block">Refit Banner Coordinates (Optional)</h4>
-                        <p className="text-[11px] text-slate-500 mt-1">If the automatic scan is slightly off or distorted, click and drag a red box on the photo below to place the banner exactly where you want it. Leave it blank to use the auto-scanner.</p>
-                      </div>
-                      <div className="border border-slate-100 rounded-lg p-1 bg-slate-50 flex justify-center">
-                        <AdminBoundingBox 
-                          imageUrl={stitcherBaseImage}
-                          onSave={(coords) => {
-                            setStitcherCoords({
-                              mask_x: coords.x,
-                              mask_y: coords.y,
-                              mask_w: coords.w,
-                              mask_h: coords.h
-                            });
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="text-center py-2">
-                      <button 
-                        onClick={triggerInstantStitch}
-                        className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider shadow-sm transition"
+              {/* Banner Upload */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Upload Your Banner *</label>
+                {bannerPreview ? (
+                  <div className="relative rounded-2xl overflow-hidden border-2 border-blue-200 group">
+                    <img src={bannerPreview} alt="Banner preview" className="w-full h-40 object-contain bg-slate-50" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => { setBannerFile(null); setBannerPreview(''); }}
+                        className="bg-white text-slate-700 rounded-lg px-3 py-1.5 text-sm font-medium flex items-center gap-1.5"
                       >
-                        Stitch Images Automatically
+                        <X className="w-3.5 h-3.5" /> Remove
                       </button>
                     </div>
-                  </div>
-                )}
-
-                {stitcherLoading && (
-                  <div className="flex items-center justify-center gap-2.5 p-6 border border-slate-100 rounded-xl bg-slate-50/50 text-xs text-slate-500">
-                    <Loader2 className="w-4 h-4 animate-spin text-slate-500" />
-                    Running computer vision pixel scanner to detect white coordinates and overlay...
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Results right side */}
-            <div className="space-y-6">
-              <div className="border border-slate-200 bg-slate-50/40 rounded-2xl p-6 space-y-6">
-                <div>
-                  <h3 className="font-semibold text-sm text-slate-900 font-display">Composite Output</h3>
-                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Instant Rendering Preview</p>
-                </div>
-
-                {stitcherResult ? (
-                  <div className="space-y-4 animate-fade">
-                    <div className="border border-slate-200 rounded-xl overflow-hidden bg-white shadow-sm">
-                      <img src={stitcherResult} alt="Composite Output" className="w-full h-64 object-cover" />
-                      <div className="p-4 border-t border-slate-100 flex justify-between items-center gap-3 bg-white">
-                        <span className="text-[10px] font-bold text-emerald-600 block uppercase tracking-wider">Auto-Composited Successfully</span>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => openImage(stitcherResult)}
-                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold uppercase tracking-wider transition"
-                          >
-                            Open Large
-                          </button>
-                        </div>
-                      </div>
+                    <div className="absolute top-2 left-2 bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                      <Check className="w-3 h-3" /> Banner ready
                     </div>
                   </div>
                 ) : (
-                  <div className="p-12 border border-dashed border-slate-200 rounded-xl text-center text-xs text-slate-400">
-                    Upload venue backdrop and event poster to view results here.
-                  </div>
+                  <label
+                    htmlFor="banner-upload"
+                    className="flex flex-col items-center justify-center gap-3 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-2xl p-10 cursor-pointer transition-all hover:bg-blue-50/50 group"
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBanner(f); }}
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center group-hover:bg-blue-200 transition">
+                      <Upload className="w-6 h-6 text-blue-500" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-slate-700">Drop your banner here</p>
+                      <p className="text-xs text-slate-400 mt-1">or click to browse · PNG, JPG, WEBP</p>
+                    </div>
+                    <input id="banner-upload" type="file" accept="image/*" className="hidden" ref={bannerInputRef} onChange={e => { const f = e.target.files?.[0]; if (f) handleBanner(f); }} />
+                  </label>
                 )}
               </div>
             </div>
+          )}
+
+          {/* ── STEP 3: Generate ─────────────────────────────────────────── */}
+          {step === 3 && (
+            <div className="space-y-6 animate-fade-in">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-blue-500" /> Generate Visualization
+              </h3>
+
+              {/* Summary */}
+              {!resultImage && !generating && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Your Event Summary</p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div><span className="text-slate-400 text-xs block">City</span><b className="text-slate-800">{selCity?.name}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Venue</span><b className="text-slate-800">{selVenue?.name}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Hall</span><b className="text-slate-800">{selHall?.name}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Capacity</span><b className="text-slate-800">{selHall?.capacity} pax</b></div>
+                    <div><span className="text-slate-400 text-xs block">Stage</span><b className="text-slate-800">{selStage?.name}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Seating</span><b className="text-slate-800">{selSeating?.name}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Event</span><b className="text-slate-800">{eventName}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Date</span><b className="text-slate-800">{eventDate || '—'}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Branding</span><b className="text-slate-800">{selBranding?.templateName}</b></div>
+                  </div>
+
+                  {selHall?.maskWidth === 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700 flex items-start gap-2">
+                      <span className="text-lg">⚠️</span>
+                      <p><b>No screen zone configured</b> for this hall. The banner will be placed in the center. For precise placement, go to <a href="/admin" className="underline">Admin → Halls → Edit Mask</a>.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error */}
+              {genError && (
+                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-sm text-red-700">
+                  <X className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div><b>Generation failed:</b> {genError}</div>
+                </div>
+              )}
+
+              {/* Loading */}
+              {generating && (
+                <div className="text-center py-16 space-y-4">
+                  <div className="relative w-20 h-20 mx-auto">
+                    <div className="w-20 h-20 rounded-full border-4 border-blue-100" />
+                    <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+                    <Sparkles className="absolute inset-0 m-auto w-7 h-7 text-blue-600" />
+                  </div>
+                  <p className="text-slate-600 font-semibold">Compositing your banner onto the venue…</p>
+                  <p className="text-slate-400 text-sm">This takes just a few seconds.</p>
+                </div>
+              )}
+
+              {/* Result */}
+              {resultImage && !generating && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
+                    <img src={resultImage} alt="Generated visualization" className="w-full h-auto" />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={download}
+                      className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                    >
+                      <Download className="w-4 h-4" /> Download PNG
+                    </button>
+                    <button
+                      onClick={() => window.open(resultImage, '_blank')}
+                      className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-semibold text-sm hover:bg-slate-200 transition flex items-center justify-center gap-2"
+                    >
+                      <Eye className="w-4 h-4" /> Open Full Size
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => { setResultImage(''); setGenError(''); }}
+                    className="w-full text-blue-600 text-sm font-medium hover:underline"
+                  >
+                    ↩ Try with a different banner
+                  </button>
+                </div>
+              )}
+
+              {/* Generate button */}
+              {!resultImage && !generating && (
+                <button
+                  onClick={generate}
+                  disabled={!selHall || !bannerFile}
+                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                >
+                  <Sparkles className="w-5 h-5" /> Generate AI Visualization
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── Navigation Buttons ───────────────────────────────────────── */}
+          <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-100">
+            <button
+              onClick={back}
+              disabled={step === 0}
+              className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-800 disabled:opacity-0 disabled:cursor-default transition px-4 py-2 rounded-xl hover:bg-slate-100"
+            >
+              <ChevronLeft className="w-4 h-4" /> Back
+            </button>
+            {step < 3 && (
+              <button
+                onClick={next}
+                disabled={!canGoNext()}
+                className="flex items-center gap-2 bg-blue-600 text-white text-sm font-bold px-6 py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-md shadow-blue-200"
+              >
+                Continue <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
           </div>
-        )}
+        </div>
       </main>
+
+      <style jsx global>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.25s ease-out both; }
+      `}</style>
     </div>
   );
 }

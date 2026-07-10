@@ -1,618 +1,473 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Building2, 
-  Layers, 
-  Plus, 
-  MapPin, 
-  Sparkles, 
-  Trash2,
-  Check, 
-  ChevronRight, 
-  Loader2,
-  Sliders,
-  Users
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Building2, Layers, MapPin, Plus, Trash2, Loader2, Check,
+  Users, Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings
 } from 'lucide-react';
 import AdminBoundingBox from '@/components/AdminBoundingBox';
 
-interface City {
-  id: number;
-  name: string;
-  state: string;
-}
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface City    { id: number; name: string; state: string; status: string; }
+interface Venue   { id: number; cityId: number; name: string; address: string; city?: City; }
+interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; maskX: number; maskY: number; maskWidth: number; maskHeight: number; venue?: Venue & { city?: City }; }
+interface Logo    { id: number; logoName: string; }
+interface Branding{ id: number; templateName: string; logos: Logo[]; }
 
-interface Venue {
-  id: number;
-  city_id: number;
-  name: string;
-  address: string;
-  image_url?: string;
-}
+type Tab = 'cities' | 'venues' | 'halls' | 'branding';
 
-interface Hall {
-  id: number;
-  venue_id: number;
-  name: string;
-  width: number;
-  length: number;
-  height: number;
-  capacity: number;
-}
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
-
-export default function AdminDashboard() {
-  // Navigation & Data state
-  const [activeTab, setActiveTab] = useState<'venues' | 'halls' | 'cities'>('venues');
-  const [cities, setCities] = useState<City[]>([]);
-  const [venues, setVenues] = useState<Venue[]>([]);
-  const [halls, setHalls] = useState<Hall[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // Forms states
-  const [newCity, setNewCity] = useState({ name: '', state: '' });
-  const [newVenue, setNewVenue] = useState({ 
-    city_id: '', 
-    name: '', 
-    address: '', 
-    image_url: '',
-    mask_x: 0,
-    mask_y: 0,
-    mask_w: 0,
-    mask_h: 0
-  });
-  const [newHall, setNewHall] = useState({ venue_id: '', name: '', width: '', length: '', height: '', capacity: '' });
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  
-  // Notification Toast
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function useToast() {
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+  const show = (msg: string, type: 'success' | 'error' = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
   };
+  return { toast, show };
+}
 
-  // Fetch initial data dynamically on mount
-  const fetchData = async () => {
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function AdminDashboard() {
+  const [activeTab, setActiveTab] = useState<Tab>('cities');
+  const { toast, show } = useToast();
+
+  // Data
+  const [cities,   setCities]   = useState<City[]>([]);
+  const [venues,   setVenues]   = useState<Venue[]>([]);
+  const [halls,    setHalls]    = useState<Hall[]>([]);
+  const [brandings,setBrandings]= useState<Branding[]>([]);
+  const [loading,  setLoading]  = useState(true);
+
+  // City form
+  const [cityForm,  setCityForm]  = useState({ name: '', state: '' });
+  // Venue form
+  const [venueForm, setVenueForm] = useState({ cityId: '', name: '', address: '' });
+  // Hall form
+  const [hallForm,  setHallForm]  = useState({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '' });
+  const [hallMask,  setHallMask]  = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [hallImageFile, setHallImageFile] = useState<File | null>(null);
+  const [hallImagePreview, setHallImagePreview] = useState<string>('');
+  // Branding form
+  const [brandingForm, setBrandingForm] = useState({ templateName: '', logos: '' });
+
+  // Editing hall bounding box
+  const [editingHall, setEditingHall] = useState<Hall | null>(null);
+  const [editMask,    setEditMask]    = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [editSaving,  setEditSaving]  = useState(false);
+
+  const [saving, setSaving] = useState(false);
+
+  // ── Fetch all data ─────────────────────────────────────────────────────────
+  const fetchAll = async () => {
     setLoading(true);
     try {
-      const [citiesRes, venuesRes, hallsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/cities`),
-        fetch(`${API_BASE}/api/venues`),
-        fetch(`${API_BASE}/api/halls`)
+      const [c, v, h, b] = await Promise.all([
+        fetch('/api/admin/cities').then(r => r.json()),
+        fetch('/api/admin/venues').then(r => r.json()),
+        fetch('/api/admin/halls').then(r => r.json()),
+        fetch('/api/admin/brandings').then(r => r.json()),
       ]);
-
-      const [citiesData, venuesData, hallsData] = await Promise.all([
-        citiesRes.json(),
-        venuesRes.json(),
-        hallsRes.json()
-      ]);
-
-      setCities(citiesData);
-      setVenues(venuesData);
-      setHalls(hallsData);
-
-      // Pre-select first IDs for dropdown selectors
-      if (citiesData.length > 0) {
-        setNewVenue(prev => ({ ...prev, city_id: String(citiesData[0].id) }));
-      }
-      if (venuesData.length > 0) {
-        setNewHall(prev => ({ ...prev, venue_id: String(venuesData[0].id) }));
-      }
-    } catch (err) {
-      showToast('Error loading data from API', 'error');
-    } finally {
-      setLoading(false);
+      setCities(Array.isArray(c) ? c : []);
+      setVenues(Array.isArray(v) ? v : []);
+      setHalls(Array.isArray(h) ? h : []);
+      setBrandings(Array.isArray(b) ? b : []);
+    } catch (e) {
+      show('Failed to load data', 'error');
     }
+    setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchAll(); }, []);
 
-  // Form Submissions
-  const handleAddCity = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCity.name || !newCity.state) return;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/cities`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCity),
-      });
-
-      if (!res.ok) throw new Error('API request failed');
-      const data = await res.json();
-      
-      setCities(prev => [...prev, data]);
-      showToast(`City "${data.name}" added successfully.`);
-      setNewCity({ name: '', state: '' });
-      
-      // Update venue select input
-      if (!newVenue.city_id) {
-        setNewVenue(prev => ({ ...prev, city_id: String(data.id) }));
-      }
-    } catch (err) {
-      showToast('Failed to save city', 'error');
-    }
+  // ── City handlers ──────────────────────────────────────────────────────────
+  const addCity = async () => {
+    if (!cityForm.name.trim() || !cityForm.state.trim()) return show('Fill all fields', 'error');
+    setSaving(true);
+    const r = await fetch('/api/admin/cities', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cityForm) });
+    setSaving(false);
+    if (r.ok) { show('City added'); setCityForm({ name: '', state: '' }); fetchAll(); }
+    else show('Failed to add city', 'error');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const deleteCity = async (id: number) => {
+    if (!confirm('Delete this city and all its venues/halls?')) return;
+    const r = await fetch(`/api/admin/cities?id=${id}`, { method: 'DELETE' });
+    if (r.ok) { show('City deleted'); fetchAll(); }
+    else show('Failed to delete', 'error');
+  };
+
+  // ── Venue handlers ─────────────────────────────────────────────────────────
+  const addVenue = async () => {
+    if (!venueForm.cityId || !venueForm.name.trim() || !venueForm.address.trim()) return show('Fill all fields', 'error');
+    setSaving(true);
+    const r = await fetch('/api/admin/venues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...venueForm, cityId: parseInt(venueForm.cityId) }) });
+    setSaving(false);
+    if (r.ok) { show('Venue added'); setVenueForm({ cityId: '', name: '', address: '' }); fetchAll(); }
+    else show('Failed to add venue', 'error');
+  };
+
+  const deleteVenue = async (id: number) => {
+    if (!confirm('Delete this venue and all its halls?')) return;
+    const r = await fetch(`/api/admin/venues?id=${id}`, { method: 'DELETE' });
+    if (r.ok) { show('Venue deleted'); fetchAll(); }
+    else show('Failed to delete', 'error');
+  };
+
+  // ── Hall handlers ──────────────────────────────────────────────────────────
+  const handleHallImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    setImageFile(file);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setNewVenue(prev => ({
-        ...prev,
-        image_url: reader.result as string
-      }));
-    };
-    reader.readAsDataURL(file);
+    setHallImageFile(file);
+    setHallImagePreview(URL.createObjectURL(file));
   };
 
-  const handleAddVenue = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newVenue.name || !newVenue.city_id) return;
-
-    try {
-      const formData = new FormData();
-      formData.append('city_id', String(newVenue.city_id));
-      formData.append('name', newVenue.name);
-      formData.append('address', newVenue.address);
-
-      // Coordinate Fallbacks (Fallback to 20, 15, 60, 40 if not set, or 0)
-      const finalX = newVenue.mask_x || 20;
-      const finalY = newVenue.mask_y || 15;
-      const finalW = newVenue.mask_w || 60;
-      const finalH = newVenue.mask_h || 40;
-
-      formData.append('mask_x', String(finalX));
-      formData.append('mask_y', String(finalY));
-      formData.append('mask_w', String(finalW));
-      formData.append('mask_h', String(finalH));
-
-      if (imageFile) {
-        formData.append('image_file', imageFile);
-      } else {
-        formData.append('image_url', newVenue.image_url);
-      }
-
-      const res = await fetch(`${API_BASE}/api/venues`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error('API request failed');
-      const data = await res.json();
-
-      setVenues(prev => [...prev, data]);
-      showToast(`Venue "${data.name}" added successfully.`);
-      
-      setImageFile(null);
-      setNewVenue(prev => ({ 
-        ...prev, 
-        name: '', 
-        address: '', 
-        image_url: '',
-        mask_x: 0,
-        mask_y: 0,
-        mask_w: 0,
-        mask_h: 0
-      }));
-
-      // Update hall select input
-      if (!newHall.venue_id) {
-        setNewHall(prev => ({ ...prev, venue_id: String(data.id) }));
-      }
-    } catch (err) {
-      showToast('Failed to save venue', 'error');
+  const addHall = async () => {
+    if (!hallForm.venueId || !hallForm.name.trim()) return show('venueId and name are required', 'error');
+    setSaving(true);
+    const fd = new FormData();
+    fd.append('venueId', hallForm.venueId);
+    fd.append('name', hallForm.name);
+    fd.append('length', hallForm.length);
+    fd.append('width', hallForm.width);
+    fd.append('height', hallForm.height);
+    fd.append('capacity', hallForm.capacity);
+    fd.append('maskX', String(hallMask.x));
+    fd.append('maskY', String(hallMask.y));
+    fd.append('maskWidth', String(hallMask.w));
+    fd.append('maskHeight', String(hallMask.h));
+    if (hallImageFile) fd.append('baseImage', hallImageFile);
+    else if (hallForm.baseImageUrl) fd.append('baseImageUrl', hallForm.baseImageUrl);
+    const r = await fetch('/api/admin/halls', { method: 'POST', body: fd });
+    setSaving(false);
+    if (r.ok) {
+      show('Hall added');
+      setHallForm({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '' });
+      setHallMask({ x: 0, y: 0, w: 0, h: 0 });
+      setHallImageFile(null);
+      setHallImagePreview('');
+      fetchAll();
+    } else {
+      const err = await r.json().catch(() => ({}));
+      show(err.error || 'Failed to add hall', 'error');
     }
   };
 
-  const handleAddHall = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const { venue_id, name, width, length, height, capacity } = newHall;
-    if (!venue_id || !name || !width || !length || !height || !capacity) return;
-
-    try {
-      const res = await fetch(`${API_BASE}/api/halls`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          venue_id: Number(venue_id),
-          name,
-          width: Number(width),
-          length: Number(length),
-          height: Number(height),
-          capacity: Number(capacity)
-        }),
-      });
-
-      if (!res.ok) throw new Error('API request failed');
-      const data = await res.json();
-
-      setHalls(prev => [...prev, data]);
-      showToast(`Hall "${data.name}" added successfully.`);
-      setNewHall(prev => ({ ...prev, name: '', width: '', length: '', height: '', capacity: '' }));
-    } catch (err) {
-      showToast('Failed to save hall', 'error');
-    }
+  const deleteHall = async (id: number) => {
+    if (!confirm('Delete this hall?')) return;
+    const r = await fetch(`/api/admin/halls?id=${id}`, { method: 'DELETE' });
+    if (r.ok) { show('Hall deleted'); fetchAll(); }
+    else show('Failed to delete', 'error');
   };
+
+  const saveEditMask = async () => {
+    if (!editingHall) return;
+    setEditSaving(true);
+    const fd = new FormData();
+    fd.append('id', String(editingHall.id));
+    fd.append('maskX', String(editMask.x));
+    fd.append('maskY', String(editMask.y));
+    fd.append('maskWidth', String(editMask.w));
+    fd.append('maskHeight', String(editMask.h));
+    const r = await fetch('/api/admin/halls', { method: 'PUT', body: fd });
+    setEditSaving(false);
+    if (r.ok) { show('Bounding box saved'); setEditingHall(null); fetchAll(); }
+    else show('Failed to save bounding box', 'error');
+  };
+
+  // ── Branding handlers ──────────────────────────────────────────────────────
+  const addBranding = async () => {
+    if (!brandingForm.templateName.trim()) return show('Template name required', 'error');
+    setSaving(true);
+    const logos = brandingForm.logos.split(',').map(l => l.trim()).filter(Boolean);
+    const r = await fetch('/api/admin/brandings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ templateName: brandingForm.templateName, logos }) });
+    setSaving(false);
+    if (r.ok) { show('Branding added'); setBrandingForm({ templateName: '', logos: '' }); fetchAll(); }
+    else show('Failed to add branding', 'error');
+  };
+
+  const deleteBranding = async (id: number) => {
+    if (!confirm('Delete this branding template?')) return;
+    const r = await fetch(`/api/admin/brandings?id=${id}`, { method: 'DELETE' });
+    if (r.ok) { show('Branding deleted'); fetchAll(); }
+    else show('Failed to delete', 'error');
+  };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'cities',   label: 'Cities',   icon: <MapPin className="w-4 h-4" /> },
+    { id: 'venues',   label: 'Venues',   icon: <Building2 className="w-4 h-4" /> },
+    { id: 'halls',    label: 'Halls',    icon: <Layers className="w-4 h-4" /> },
+    { id: 'branding', label: 'Branding', icon: <Star className="w-4 h-4" /> },
+  ];
 
   return (
-    <div className="min-h-screen bg-white text-slate-800 font-sans antialiased">
-      {/* Toast Alert */}
+    <div className="min-h-screen bg-slate-50 font-sans">
+      {/* Toast */}
       {toast && (
-        <div className="fixed top-6 right-6 z-50 bg-slate-900 text-white border border-slate-850 px-5 py-3 rounded-xl flex items-center gap-3 shadow-sm animate-fade">
-          <Check className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm font-semibold">{toast.message}</span>
+        <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+          {toast.type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+          {toast.msg}
         </div>
       )}
 
-      {/* Main Container */}
-      <div className="max-w-6xl mx-auto px-6 py-12">
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between pb-8 mb-12 border-b border-slate-200 gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs uppercase tracking-widest font-bold text-slate-400">Master Administration</span>
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center">
+              <Settings className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-3xl font-display font-bold text-slate-900 tracking-tight">Eventelligence Admin</h1>
+            <div>
+              <h1 className="text-lg font-bold text-slate-900 leading-none">Eventelligence</h1>
+              <p className="text-xs text-slate-500">Admin Dashboard</p>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-6">
-            <a 
-              href="/" 
-              className="text-sm font-semibold text-slate-500 hover:text-slate-900 transition flex items-center gap-1"
+          <a href="/" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+            <BookOpen className="w-3.5 h-3.5" /> View Frontend
+          </a>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
+        {/* Tab Bar */}
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === t.id ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
             >
-              Open Configurator Form
-              <ChevronRight className="w-4 h-4" />
-            </a>
-          </div>
-        </header>
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
 
         {loading ? (
-          <div className="py-24 text-center space-y-4">
-            <Loader2 className="w-8 h-8 text-slate-400 animate-spin mx-auto" />
-            <p className="text-sm text-slate-500">Querying active database pipelines...</p>
-          </div>
+          <div className="flex items-center justify-center h-48"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 items-start">
-            
-            {/* Input Forms Panel (Left 1/3) */}
-            <aside className="space-y-8">
-              {/* Tab Selector */}
-              <nav className="flex border border-slate-200 rounded-xl overflow-hidden text-xs font-bold uppercase tracking-wider" aria-label="Tab navigation">
-                <button
-                  onClick={() => setActiveTab('venues')}
-                  className={`flex-1 py-3 text-center transition ${activeTab === 'venues' ? 'bg-slate-100 text-slate-900 border-r border-slate-200' : 'text-slate-400 hover:text-slate-600 bg-white border-r border-slate-200'}`}
-                >
-                  Venues
-                </button>
-                <button
-                  onClick={() => setActiveTab('halls')}
-                  className={`flex-1 py-3 text-center transition ${activeTab === 'halls' ? 'bg-slate-100 text-slate-900 border-r border-slate-200' : 'text-slate-400 hover:text-slate-600 bg-white border-r border-slate-200'}`}
-                >
-                  Halls
-                </button>
-                <button
-                  onClick={() => setActiveTab('cities')}
-                  className={`flex-1 py-3 text-center transition ${activeTab === 'cities' ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-600 bg-white'}`}
-                >
-                  Cities
-                </button>
-              </nav>
-
-              {/* Form 1: Add City */}
-              {activeTab === 'cities' && (
-                <div className="p-6 border border-slate-200 rounded-2xl bg-white space-y-6">
-                  <div>
-                    <h3 className="font-semibold text-base text-slate-900">Add City</h3>
-                    <p className="text-xs text-slate-500 mt-1">Specify new regional nodes for Pan-India location matching.</p>
-                  </div>
-                  <form onSubmit={handleAddCity} className="space-y-4">
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">City Name</label>
-                      <input 
-                        type="text" 
-                        value={newCity.name}
-                        onChange={(e) => setNewCity({ ...newCity, name: e.target.value })}
-                        placeholder="e.g. Hyderabad"
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        required 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">State</label>
-                      <input 
-                        type="text" 
-                        value={newCity.state}
-                        onChange={(e) => setNewCity({ ...newCity, state: e.target.value })}
-                        placeholder="e.g. Telangana"
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        required 
-                      />
-                    </div>
-                    <button 
-                      type="submit" 
-                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition"
-                    >
-                      Save City
-                    </button>
-                  </form>
+          <>
+            {/* ─── CITIES ─────────────────────────────────────────────────── */}
+            {activeTab === 'cities' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Add form */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add City</h2>
+                  <input placeholder="City name (e.g. Bhopal)" value={cityForm.name} onChange={e => setCityForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <input placeholder="State (e.g. Madhya Pradesh)" value={cityForm.state} onChange={e => setCityForm(f => ({...f, state: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <button onClick={addCity} disabled={saving} className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add City
+                  </button>
                 </div>
-              )}
 
-              {/* Form 2: Add Venue */}
-              {activeTab === 'venues' && (
-                <div className="p-6 border border-slate-200 rounded-2xl bg-white space-y-6">
-                  <div>
-                    <h3 className="font-semibold text-base text-slate-900">Add Venue</h3>
-                    <p className="text-xs text-slate-500 mt-1">Add premium hotels or conventions under active cities.</p>
-                  </div>
-                  <form onSubmit={handleAddVenue} className="space-y-4">
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">City Location</label>
-                      <select 
-                        value={newVenue.city_id}
-                        onChange={(e) => setNewVenue({ ...newVenue, city_id: e.target.value })}
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        required
-                      >
-                        <option value="">Select City</option>
-                        {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Venue Name</label>
-                      <input 
-                        type="text" 
-                        value={newVenue.name}
-                        onChange={(e) => setNewVenue({ ...newVenue, name: e.target.value })}
-                        placeholder="e.g. The Leela Palace"
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        required 
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Address</label>
-                      <input 
-                        type="text" 
-                        value={newVenue.address}
-                        onChange={(e) => setNewVenue({ ...newVenue, address: e.target.value })}
-                        placeholder="e.g. Chanakyapuri, New Delhi"
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                      />
-                    </div>
-                    <div className="space-y-4 p-4 border border-slate-200 rounded-xl bg-slate-50/50">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider mb-2">Venue Backdrop Photo</span>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Option A: Upload Image File</label>
-                            <input 
-                              type="file" 
-                              accept="image/*"
-                              onChange={handleFileChange}
-                              className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-900 file:text-white file:cursor-pointer hover:file:bg-slate-800"
-                            />
+                {/* List */}
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Cities ({cities.length})</div>
+                  {cities.length === 0 ? (
+                    <p className="text-center text-slate-400 py-12 text-sm">No cities yet.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {cities.map(c => (
+                        <div key={c.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 transition">
+                          <div>
+                            <p className="font-medium text-slate-800 text-sm">{c.name}</p>
+                            <p className="text-xs text-slate-400">{c.state}</p>
                           </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Option B: Photo URL string</label>
-                            <input 
-                              type="url" 
-                              value={imageFile ? '' : newVenue.image_url}
-                              disabled={!!imageFile}
-                              onChange={(e) => setNewVenue({ ...newVenue, image_url: e.target.value })}
-                              placeholder="https://images.unsplash.com/..."
-                              className="w-full text-xs bg-white border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:border-slate-400 text-slate-800 disabled:opacity-50 disabled:bg-slate-100"
-                            />
-                          </div>
+                          <button onClick={() => deleteCity(c.id)} className="text-red-400 hover:text-red-600 transition"><Trash2 className="w-4 h-4" /></button>
                         </div>
-                      </div>
+                      ))}
                     </div>
-                    {newVenue.image_url && (
-                      <AdminBoundingBox 
-                        imageUrl={newVenue.image_url} 
-                        onSave={(coords) => setNewVenue(prev => ({
-                          ...prev,
-                          mask_x: coords.x,
-                          mask_y: coords.y,
-                          mask_w: coords.w,
-                          mask_h: coords.h
-                        }))}
-                      />
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ─── VENUES ─────────────────────────────────────────────────── */}
+            {activeTab === 'venues' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add Venue</h2>
+                  <select value={venueForm.cityId} onChange={e => setVenueForm(f => ({...f, cityId: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                    <option value="">Select City</option>
+                    {cities.map(c => <option key={c.id} value={c.id}>{c.name}, {c.state}</option>)}
+                  </select>
+                  <input placeholder="Venue name" value={venueForm.name} onChange={e => setVenueForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <input placeholder="Address" value={venueForm.address} onChange={e => setVenueForm(f => ({...f, address: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <button onClick={addVenue} disabled={saving} className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add Venue
+                  </button>
+                </div>
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Venues ({venues.length})</div>
+                  {venues.length === 0 ? (
+                    <p className="text-center text-slate-400 py-12 text-sm">No venues yet.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {venues.map(v => (
+                        <div key={v.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 transition">
+                          <div>
+                            <p className="font-medium text-slate-800 text-sm">{v.name}</p>
+                            <p className="text-xs text-slate-400">{v.address} · {(v as any).city?.name}</p>
+                          </div>
+                          <button onClick={() => deleteVenue(v.id)} className="text-red-400 hover:text-red-600 transition"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ─── HALLS ──────────────────────────────────────────────────── */}
+            {activeTab === 'halls' && (
+              <div className="space-y-6">
+                {/* Edit bounding box modal */}
+                {editingHall && (
+                  <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-slate-800">Edit Bounding Box: {editingHall.name}</h3>
+                        <button onClick={() => setEditingHall(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                      </div>
+                      {editingHall.baseImageUrl ? (
+                        <AdminBoundingBox
+                          imageUrl={editingHall.baseImageUrl}
+                          initialCoords={{ x: editingHall.maskX, y: editingHall.maskY, w: editingHall.maskWidth, h: editingHall.maskHeight }}
+                          onSave={c => setEditMask({ x: c.x, y: c.y, w: c.w, h: c.h })}
+                        />
+                      ) : (
+                        <p className="text-amber-600 text-sm bg-amber-50 p-3 rounded-lg">This hall has no base image. Please add one first.</p>
+                      )}
+                      <button onClick={saveEditMask} disabled={editSaving || !editingHall.baseImageUrl} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                        {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Bounding Box
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                  {/* Add form */}
+                  <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                    <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add Hall</h2>
+                    <select value={hallForm.venueId} onChange={e => setHallForm(f => ({...f, venueId: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
+                      <option value="">Select Venue</option>
+                      {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                    </select>
+                    <input placeholder="Hall name (e.g. Grand Ballroom)" value={hallForm.name} onChange={e => setHallForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input placeholder="Length (m)" type="number" value={hallForm.length} onChange={e => setHallForm(f => ({...f, length: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                      <input placeholder="Width (m)" type="number" value={hallForm.width} onChange={e => setHallForm(f => ({...f, width: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                      <input placeholder="Height (m)" type="number" value={hallForm.height} onChange={e => setHallForm(f => ({...f, height: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                      <input placeholder="Capacity" type="number" value={hallForm.capacity} onChange={e => setHallForm(f => ({...f, capacity: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+
+                    {/* Base Image */}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Base Image</p>
+                      <input placeholder="Or paste image URL" value={hallForm.baseImageUrl} onChange={e => setHallForm(f => ({...f, baseImageUrl: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2" />
+                      <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-3 cursor-pointer hover:border-blue-400 transition text-xs text-slate-500">
+                        <ImageIcon className="w-4 h-4" /> Upload image file
+                        <input type="file" accept="image/*" onChange={handleHallImageChange} className="hidden" />
+                      </label>
+                      {hallImagePreview && (
+                        <img src={hallImagePreview} alt="preview" className="mt-2 rounded-lg w-full h-28 object-cover" />
+                      )}
+                    </div>
+
+                    {/* Bounding box */}
+                    {(hallImagePreview || hallForm.baseImageUrl) && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Define Screen Zone</p>
+                        <AdminBoundingBox
+                          imageUrl={hallImagePreview || hallForm.baseImageUrl}
+                          onSave={c => setHallMask({ x: c.x, y: c.y, w: c.w, h: c.h })}
+                        />
+                      </div>
                     )}
-                    <button 
-                      type="submit" 
-                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition"
-                    >
-                      Save Venue
+
+                    <button onClick={addHall} disabled={saving} className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add Hall
                     </button>
-                  </form>
-                </div>
-              )}
-
-              {/* Form 3: Add Hall */}
-              {activeTab === 'halls' && (
-                <div className="p-6 border border-slate-200 rounded-2xl bg-white space-y-6">
-                  <div>
-                    <h3 className="font-semibold text-base text-slate-900">Add Hall</h3>
-                    <p className="text-xs text-slate-500 mt-1">Specify room dimension thresholds for structural scaling.</p>
                   </div>
-                  <form onSubmit={handleAddHall} className="space-y-4">
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Select Venue</label>
-                      <select 
-                        value={newHall.venue_id}
-                        onChange={(e) => setNewHall({ ...newHall, venue_id: e.target.value })}
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        required
-                      >
-                        <option value="">Select Venue</option>
-                        {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Hall Name</label>
-                      <input 
-                        type="text" 
-                        value={newHall.name}
-                        onChange={(e) => setNewHall({ ...newHall, name: e.target.value })}
-                        placeholder="e.g. Royal Plenary Hall"
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        required 
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Width (m)</label>
-                        <input 
-                          type="number" 
-                          value={newHall.width}
-                          onChange={(e) => setNewHall({ ...newHall, width: e.target.value })}
-                          className="w-full text-sm bg-white border border-slate-200 p-2.5 rounded-xl focus:outline-none text-slate-800"
-                          placeholder="24"
-                          required 
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Length (m)</label>
-                        <input 
-                          type="number" 
-                          value={newHall.length}
-                          onChange={(e) => setNewHall({ ...newHall, length: e.target.value })}
-                          className="w-full text-sm bg-white border border-slate-200 p-2.5 rounded-xl focus:outline-none text-slate-800"
-                          placeholder="40"
-                          required 
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Height (m)</label>
-                        <input 
-                          type="number" 
-                          value={newHall.height}
-                          onChange={(e) => setNewHall({ ...newHall, height: e.target.value })}
-                          className="w-full text-sm bg-white border border-slate-200 p-2.5 rounded-xl focus:outline-none text-slate-800"
-                          placeholder="8.5"
-                          required 
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block mb-1.5">Max capacity (Pax)</label>
-                      <input 
-                        type="number" 
-                        value={newHall.capacity}
-                        onChange={(e) => setNewHall({ ...newHall, capacity: e.target.value })}
-                        className="w-full text-sm bg-white border border-slate-200 p-3 rounded-xl focus:outline-none focus:border-slate-400 text-slate-800"
-                        placeholder="e.g. 500"
-                        required 
-                      />
-                    </div>
-                    <button 
-                      type="submit" 
-                      className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition"
-                    >
-                      Save Hall
-                    </button>
-                  </form>
-                </div>
-              )}
-            </aside>
 
-            {/* Display database state (Right 2/3) */}
-            <section className="lg:col-span-2 space-y-12">
-              {/* Cities Section */}
-              <div className="space-y-4">
-                <h3 className="text-xs uppercase tracking-widest font-bold text-slate-400 border-b border-slate-200 pb-2">Cities Indexed</h3>
-                {cities.length === 0 ? (
-                  <p className="text-xs italic text-slate-400">No cities registered.</p>
-                ) : (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                    {cities.map(c => (
-                      <div key={c.id} className="p-4 border border-slate-200 rounded-xl bg-white flex items-center justify-between">
-                        <div>
-                          <span className="font-semibold text-sm text-slate-800 block">{c.name}</span>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{c.state}</span>
-                        </div>
-                        <span className="text-[10px] text-slate-400 font-semibold px-2 py-0.5 bg-slate-100 rounded-full border border-slate-200/50">
-                          {venues.filter(v => v.city_id === c.id).length} Venues
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Venues & Halls Nested layout */}
-              <div className="space-y-4">
-                <h3 className="text-xs uppercase tracking-widest font-bold text-slate-400 border-b border-slate-200 pb-2 flex items-center justify-between">
-                  <span>Registered Venues & Halls</span>
-                  <span className="text-[10px] lowercase font-normal">{venues.length} locations active</span>
-                </h3>
-
-                {venues.length === 0 ? (
-                  <p className="text-xs italic text-slate-400">No venues configured yet.</p>
-                ) : (
-                  <div className="space-y-6">
-                    {venues.map(v => {
-                      const city = cities.find(c => c.id === v.city_id);
-                      const venueHalls = halls.filter(h => h.venue_id === v.id);
-
-                      return (
-                        <div key={v.id} className="border border-slate-200 rounded-2xl bg-white overflow-hidden">
-                          {/* Venue info strip */}
-                          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-4">
-                            <div>
-                              <h4 className="font-semibold text-sm text-slate-900">{v.name}</h4>
-                              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
-                                <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                                {v.address || 'Address not listed'} • {city ? city.name : 'Unknown City'}
-                              </p>
-                            </div>
-                            <span className="text-[10px] font-bold px-2.5 py-0.5 bg-white text-slate-600 rounded-full border border-slate-200 uppercase tracking-wide">
-                              ID: V-{v.id}
-                            </span>
-                          </div>
-
-                          {/* Nested halls listing */}
-                          <div className="p-6">
-                            {venueHalls.length === 0 ? (
-                              <p className="text-xs italic text-slate-400">No rooms or ballrooms registered under this venue. Go to the "Halls" tab to add one.</p>
-                            ) : (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {venueHalls.map(h => (
-                                  <div key={h.id} className="p-4 border border-slate-200 rounded-xl bg-white flex justify-between items-center">
-                                    <div className="space-y-1">
-                                      <span className="font-semibold text-xs text-slate-800 block">{h.name}</span>
-                                      <div className="flex gap-4 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                                        <span>Area: {h.width}x{h.length}m</span>
-                                        <span>Height: {h.height}m</span>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <span className="text-[9px] text-slate-400 block font-bold uppercase tracking-wider">Capacity</span>
-                                      <span className="text-xs font-bold text-slate-700">{h.capacity.toLocaleString()} Pax</span>
-                                    </div>
+                  {/* Hall list */}
+                  <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Halls ({halls.length})</div>
+                    {halls.length === 0 ? (
+                      <p className="text-center text-slate-400 py-12 text-sm">No halls yet.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
+                        {halls.map(h => (
+                          <div key={h.id} className="px-6 py-4 hover:bg-slate-50 transition">
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex gap-3 items-start flex-1 min-w-0">
+                                {h.baseImageUrl ? (
+                                  <img src={h.baseImageUrl} alt={h.name} className="w-16 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
+                                ) : (
+                                  <div className="w-16 h-12 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center shrink-0"><ImageIcon className="w-5 h-5 text-slate-300" /></div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-slate-800 text-sm truncate">{h.name}</p>
+                                  <p className="text-xs text-slate-400 truncate">{(h as any).venue?.name} · {(h as any).venue?.city?.name}</p>
+                                  <p className="text-xs text-slate-400">{h.length}m × {h.width}m · {h.capacity} pax</p>
+                                  <div className={`mt-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${h.maskWidth > 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {h.maskWidth > 0 ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                                    {h.maskWidth > 0 ? `Mask: ${h.maskWidth}×${h.maskHeight}px` : 'No mask defined'}
                                   </div>
-                                ))}
+                                </div>
                               </div>
-                            )}
+                              <div className="flex flex-col gap-1.5 shrink-0">
+                                <button onClick={() => { setEditingHall(h); setEditMask({ x: h.maskX, y: h.maskY, w: h.maskWidth, h: h.maskHeight }); }} className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">Edit Mask</button>
+                                <button onClick={() => deleteHall(h.id)} className="text-xs bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium">Delete</button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </section>
-          </div>
+            )}
+
+            {/* ─── BRANDING ────────────────────────────────────────────────── */}
+            {activeTab === 'branding' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add Branding Template</h2>
+                  <input placeholder="Template name (e.g. Corporate Tech Summit)" value={brandingForm.templateName} onChange={e => setBrandingForm(f => ({...f, templateName: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <div>
+                    <label className="text-xs text-slate-500 mb-1 block">Logos (comma-separated names)</label>
+                    <textarea placeholder="e.g. Tata Group, Reliance, NASSCOM" value={brandingForm.logos} onChange={e => setBrandingForm(f => ({...f, logos: e.target.value}))} rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+                  </div>
+                  <button onClick={addBranding} disabled={saving} className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add Template
+                  </button>
+                </div>
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">Branding Templates ({brandings.length})</div>
+                  {brandings.length === 0 ? (
+                    <p className="text-center text-slate-400 py-12 text-sm">No templates yet.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-50">
+                      {brandings.map(b => (
+                        <div key={b.id} className="flex items-start justify-between gap-4 px-6 py-4 hover:bg-slate-50 transition">
+                          <div>
+                            <p className="font-semibold text-slate-800 text-sm">{b.templateName}</p>
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              {b.logos.map(l => (
+                                <span key={l.id} className="bg-slate-100 text-slate-600 text-[11px] px-2 py-0.5 rounded-full">{l.logoName}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <button onClick={() => deleteBranding(b.id)} className="text-red-400 hover:text-red-600 mt-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

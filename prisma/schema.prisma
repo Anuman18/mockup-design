@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model City {
+  id     Int     @id @default(autoincrement())
+  name   String
+  state  String
+  status String  @default("active")
+  venues Venue[]
+
+  @@map("cities")
+}
+
+model Venue {
+  id      Int         @id @default(autoincrement())
+  cityId  Int         @map("city_id")
+  name    String
+  address String
+  city    City        @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  halls   VenueHall[]
+
+  @@map("venues")
+}
+
+model VenueHall {
+  id           Int     @id @default(autoincrement())
+  venueId      Int     @map("venue_id")
+  name         String
+  length       Float   @default(0)
+  width        Float   @default(0)
+  height       Float   @default(0)
+  capacity     Int     @default(0)
+  baseImageUrl String? @map("base_image_url")
+  maskX        Int     @default(0) @map("mask_x")
+  maskY        Int     @default(0) @map("mask_y")
+  maskWidth    Int     @default(0) @map("mask_width")
+  maskHeight   Int     @default(0) @map("mask_height")
+  venue        Venue   @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("venue_halls")
+}
+
+model BrandingTemplate {
+  id           Int    @id @default(autoincrement())
+  templateName String @map("template_name")
+  logos        Logo[]
+
+  @@map("branding_templates")
+}
+
+model Logo {
+  id         Int              @id @default(autoincrement())
+  templateId Int              @map("template_id")
+  logoName   String           @map("logo_name")
+  logoUrl    String?          @map("logo_url")
+  template   BrandingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("logos")
+}
+
+model StageTemplate {
+  id    Int    @id @default(autoincrement())
+  name  String
+  value String
+  type  String @default("stage")
+
+  @@map("stage_templates")
+}
+
+model SeatingTemplate {
+  id    Int    @id @default(autoincrement())
+  name  String
+  value String
+  type  String @default("seating")
+
+  @@map("seating_templates")
+}
