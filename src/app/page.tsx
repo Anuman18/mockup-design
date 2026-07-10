@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MapPin, Building2, Layers, ChevronRight, ChevronLeft,
   Sparkles, Loader2, Check, Download, Eye,
-  Calendar, Type, Star, Palette, Layout, X
+  Calendar, Type, Star, Palette, Layout, X, Upload
 } from 'lucide-react';
 
 interface City    { id: number; name: string; state: string; }
@@ -108,6 +108,12 @@ export default function HomePage() {
   const [eventName,       setEventName]       = useState('');
   const [eventDate,       setEventDate]       = useState('');
   const [screenConfig,    setScreenConfig]    = useState<'center' | 'wings' | 'all'>('center');
+  const [screenTheme,     setScreenTheme]     = useState<'light' | 'dark'>('light');
+
+  // Custom Logo Upload
+  const [customLogoFile,    setCustomLogoFile]    = useState<File | null>(null);
+  const [customLogoPreview, setCustomLogoPreview] = useState<string>('');
+  const customLogoInputRef = useRef<HTMLInputElement>(null);
 
   // Visualization Generation
   const [generating,  setGenerating]  = useState(false);
@@ -158,6 +164,17 @@ export default function HomePage() {
     );
   };
 
+  const handleCustomLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCustomLogoFile(file);
+      setCustomLogoPreview(URL.createObjectURL(file));
+      // Reset selected database template logos when custom logo is uploaded to prevent confusion
+      setSelBranding(null);
+      setSelectedLogos([]);
+    }
+  };
+
   const generate = async () => {
     if (!selHall || !eventName.trim()) return;
     setGenerating(true);
@@ -170,7 +187,12 @@ export default function HomePage() {
       fd.append('eventName',    eventName);
       fd.append('eventDate',    eventDate);
       fd.append('screenConfig', screenConfig);
+      fd.append('screenTheme',  screenTheme);
       fd.append('logos',        JSON.stringify(selectedLogos));
+
+      if (customLogoFile) {
+        fd.append('customLogo', customLogoFile);
+      }
 
       const r = await fetch('/api/generate-visualization', { method: 'POST', body: fd });
       const data = await r.json();
@@ -186,7 +208,7 @@ export default function HomePage() {
   const canGoNext = () => {
     if (step === 0) return !!selHall;
     if (step === 1) return !!selStage && !!selSeating;
-    if (step === 2) return !!eventName.trim() && selectedLogos.length > 0;
+    if (step === 2) return !!eventName.trim() && (selectedLogos.length > 0 || !!customLogoFile);
     return true;
   };
 
@@ -360,58 +382,108 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Screen configuration dropdown */}
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Stage Screen Configuration</label>
-                <select
-                  value={screenConfig}
-                  onChange={e => setScreenConfig(e.target.value as any)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                >
-                  <option value="center">Center LED Only</option>
-                  <option value="wings">Center + Side Wings</option>
-                  <option value="all">Full End-to-End LED</option>
-                </select>
-              </div>
-
-              {/* Select template */}
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Branding Template Pack</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {brandings.map(b => (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => setSelBranding(b)}
-                      className={`p-4 rounded-xl border-2 text-left transition-all ${selBranding?.id === b.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-200'}`}
-                    >
-                      <p className="text-xs font-bold text-slate-800">{b.templateName}</p>
-                      <p className="text-[10px] text-slate-400 mt-1">{b.logos.length} Sponsors</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Selected Sponsor Logos */}
-              {selBranding && (
+              {/* Screen configuration & Theme Dropdowns */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Select Logos to Include ({selectedLogos.length})</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
-                    {selBranding.logos.map(logo => {
-                      const isSelected = selectedLogos.includes(logo.logoName);
-                      return (
-                        <button
-                          key={logo.id}
-                          type="button"
-                          onClick={() => handleLogoToggle(logo.logoName)}
-                          className={`p-3 rounded-lg border-2 text-center transition-all ${isSelected ? 'border-blue-500 bg-white shadow-sm' : 'border-transparent text-slate-500 bg-slate-100 hover:bg-slate-200/60'}`}
-                        >
-                          <p className="text-xs font-bold truncate">{logo.logoName}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Screen Configuration</label>
+                  <select
+                    value={screenConfig}
+                    onChange={e => setScreenConfig(e.target.value as any)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                  >
+                    <option value="center">Center LED Only</option>
+                    <option value="wings">Center + Side Wings</option>
+                    <option value="all">Full End-to-End LED</option>
+                  </select>
                 </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Screen Theme Style</label>
+                  <select
+                    value={screenTheme}
+                    onChange={e => setScreenTheme(e.target.value as any)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700"
+                  >
+                    <option value="light">Minimalist Light (Clean White)</option>
+                    <option value="dark">Premium Corporate (Navy/Blue Gradient)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Custom Logo Upload Option */}
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Insert Custom Logo (PNG / JPG)</label>
+                {customLogoPreview ? (
+                  <div className="relative rounded-2xl overflow-hidden border-2 border-blue-200 bg-slate-50 p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img src={customLogoPreview} alt="Custom logo preview" className="w-16 h-12 object-contain bg-white rounded border border-slate-200" />
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">{customLogoFile?.name}</p>
+                        <p className="text-[10px] text-slate-400">Size: {((customLogoFile?.size ?? 0) / 1024).toFixed(1)} KB</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setCustomLogoFile(null); setCustomLogoPreview(''); }}
+                      className="text-red-500 hover:text-red-700 text-xs font-bold uppercase tracking-wider flex items-center gap-1"
+                    >
+                      <X className="w-4 h-4" /> Remove Logo
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-250 hover:border-blue-400 rounded-xl p-4 cursor-pointer hover:bg-blue-50/20 transition-all text-xs text-slate-500 font-semibold uppercase tracking-wider">
+                    <Upload className="w-4 h-4 text-blue-500" /> Upload custom logo file
+                    <input type="file" accept="image/png, image/jpeg, image/jpg" ref={customLogoInputRef} onChange={handleCustomLogoChange} className="hidden" />
+                  </label>
+                )}
+              </div>
+
+              {/* Preset Branding Templates */}
+              {!customLogoFile && (
+                <>
+                  <div className="relative flex py-2 items-center">
+                    <div className="flex-grow border-t border-slate-200"></div>
+                    <span className="flex-shrink mx-4 text-slate-400 text-xs uppercase font-bold tracking-widest">Or Use Presets</span>
+                    <div className="flex-grow border-t border-slate-200"></div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Select Branding Package</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {brandings.map(b => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => setSelBranding(b)}
+                          className={`p-4 rounded-xl border-2 text-left transition-all ${selBranding?.id === b.id ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-blue-200'}`}
+                        >
+                          <p className="text-xs font-bold text-slate-800">{b.templateName}</p>
+                          <p className="text-[10px] text-slate-400 mt-1">{b.logos.length} Sponsors</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selBranding && (
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Select Logos to Include ({selectedLogos.length})</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-50 border border-slate-200/60 p-4 rounded-2xl">
+                        {selBranding.logos.map(logo => {
+                          const isSelected = selectedLogos.includes(logo.logoName);
+                          return (
+                            <button
+                              key={logo.id}
+                              type="button"
+                              onClick={() => handleLogoToggle(logo.logoName)}
+                              className={`p-3 rounded-lg border-2 text-center transition-all ${isSelected ? 'border-blue-500 bg-white shadow-sm' : 'border-transparent text-slate-500 bg-slate-100 hover:bg-slate-200/60'}`}
+                            >
+                              <p className="text-xs font-bold truncate">{logo.logoName}</p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
@@ -434,7 +506,13 @@ export default function HomePage() {
                     <div><span className="text-slate-400 text-xs block">Seating</span><b className="text-slate-800">{selSeating?.name}</b></div>
                     <div><span className="text-slate-400 text-xs block">Event Name</span><b className="text-slate-800">{eventName}</b></div>
                     <div><span className="text-slate-400 text-xs block">Screen Config</span><b className="text-slate-800 uppercase text-xs">{screenConfig} Screen</b></div>
-                    <div><span className="text-slate-400 text-xs block">Logos Included</span><b className="text-slate-800 text-xs">{selectedLogos.join(', ')}</b></div>
+                    <div><span className="text-slate-400 text-xs block">Theme Style</span><b className="text-slate-800 uppercase text-xs">{screenTheme} Theme</b></div>
+                    <div>
+                      <span className="text-slate-400 text-xs block">Logo Mode</span>
+                      <b className="text-slate-800 text-xs">
+                        {customLogoFile ? `Custom Logo: ${customLogoFile.name}` : `Presets: ${selectedLogos.join(', ')}`}
+                      </b>
+                    </div>
                   </div>
                 </div>
               )}
@@ -477,13 +555,19 @@ export default function HomePage() {
                       <Eye className="w-4 h-4" /> Open Full Screen
                     </button>
                   </div>
+                  <button
+                    onClick={() => { setResultImage(''); setGenError(''); }}
+                    className="w-full text-blue-600 text-sm font-medium hover:underline text-center block mt-3"
+                  >
+                    ↩ Make changes or try another layout
+                  </button>
                 </div>
               )}
 
               {!resultImage && !generating && (
                 <button
                   onClick={generate}
-                  disabled={!selHall || !eventName.trim() || selectedLogos.length === 0}
+                  disabled={!selHall || !eventName.trim() || (selectedLogos.length === 0 && !customLogoFile)}
                   className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                 >
                   <Sparkles className="w-5 h-5" /> Generate AI Layout
