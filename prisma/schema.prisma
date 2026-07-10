@@ -52,6 +52,9 @@ model VenueHall {
   rightMaskY   Int     @default(0) @map("right_mask_y")
   rightMaskWidth Int   @default(0) @map("right_mask_width")
   rightMaskHeight Int  @default(0) @map("right_mask_height")
+  floorPlanUrl   String?          @map("floor_plan_url")
+  refPhotoUrl1   String?          @map("ref_photo_url_1")
+  refPhotoUrl2   String?          @map("ref_photo_url_2")
   venue        Venue   @relation(fields: [venueId], references: [id], onDelete: Cascade)
 
   @@map("venue_halls")

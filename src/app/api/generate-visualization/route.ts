@@ -4,29 +4,42 @@ import sharp from 'sharp';
 
 /**
  * Generates the base SVG layout for a screen of width W and height H,
- * containing styled corporate typography and a premium accent design.
+ * containing styled corporate typography, LED grids, glowing borders, and drop shadow halos.
  */
 function createScreenBaseSvg(
   W: number,
   H: number,
   title: string,
+  subtitle: string,
+  dateText: string,
+  venueText: string,
+  footerText: string,
   theme: 'light' | 'dark',
-  hasLogo: boolean
+  hasLogos: boolean,
+  perspectiveAngle: number // -10 to +10 skew
 ): Buffer {
   const isDark = theme === 'dark';
   const cleanTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const cleanSub = subtitle ? subtitle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+  const cleanDate = dateText ? dateText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+  const cleanVenue = venueText ? venueText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+  const cleanFooter = footerText ? footerText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
 
-  // Premium corporate colors
-  const stopColor1 = isDark ? '#0f172a' : '#ffffff';
-  const stopColor2 = isDark ? '#1e293b' : '#f8fafc';
+  // Theme settings
+  const stopColor1 = isDark ? '#080d1a' : '#ffffff';
+  const stopColor2 = isDark ? '#111827' : '#f1f5f9';
   const textColor  = isDark ? '#f8fafc' : '#0f172a';
-  const accentColor = isDark ? '#38bdf8' : '#2563eb'; // Cyan glowing line in dark, Royal Blue in light
+  const subTextColor = isDark ? '#94a3b8' : '#475569';
+  const accentColor = isDark ? '#38bdf8' : '#2563eb';
+  const glowIntensity = isDark ? 'rgba(56, 189, 248, 0.45)' : 'rgba(37, 99, 235, 0.15)';
 
-  // Responsive typography sizing
-  const fontSize = Math.min(W * 0.058, H * 0.16, 42);
+  // Responsive font size logic
+  const titleSize = Math.min(W * 0.052, H * 0.13, 38);
+  const subSize = Math.max(9, titleSize * 0.45);
+  const dateSize = Math.max(8, titleSize * 0.4);
 
-  // Layout lines
-  let textBlock = '';
+  // Split title if too long
+  let titleTextBlock = '';
   if (cleanTitle.length > 22) {
     const mid = Math.floor(cleanTitle.length / 2);
     let splitIdx = cleanTitle.indexOf(' ', mid);
@@ -35,52 +48,77 @@ function createScreenBaseSvg(
 
     const line1 = cleanTitle.substring(0, splitIdx).trim();
     const line2 = cleanTitle.substring(splitIdx).trim();
+    const startY = hasLogos ? (H * 0.52) : (H * 0.44);
 
-    // Vertically center lines, accounting for logo at the top if present
-    const startY = hasLogo ? (H * 0.58) : (H * 0.48);
-
-    textBlock = `
-      <text x="50%" y="${startY}" font-family="system-ui, -apple-system, sans-serif" font-size="${fontSize}px" font-weight="800" fill="${textColor}" text-anchor="middle" letter-spacing="-0.02em">
+    titleTextBlock = `
+      <text x="50%" y="${startY}" font-family="system-ui, -apple-system, sans-serif" font-size="${titleSize}px" font-weight="800" fill="${textColor}" text-anchor="middle" letter-spacing="-0.02em">
         <tspan x="50%" dy="0">${line1}</tspan>
-        <tspan x="50%" dy="${fontSize + 8}">${line2}</tspan>
+        <tspan x="50%" dy="${titleSize + 6}">${line2}</tspan>
       </text>
     `;
   } else {
-    const startY = hasLogo ? (H * 0.63) : (H * 0.54);
-    textBlock = `
-      <text x="50%" y="${startY}" font-family="system-ui, -apple-system, sans-serif" font-size="${fontSize}px" font-weight="900" fill="${textColor}" text-anchor="middle" letter-spacing="-0.025em">${cleanTitle}</text>
+    const startY = hasLogos ? (H * 0.58) : (H * 0.48);
+    titleTextBlock = `
+      <text x="50%" y="${startY}" font-family="system-ui, -apple-system, sans-serif" font-size="${titleSize}px" font-weight="900" fill="${textColor}" text-anchor="middle" letter-spacing="-0.025em">${cleanTitle}</text>
     `;
   }
 
-  // Accent highlight line below text
-  const lineW = Math.min(W * 0.35, 180);
-  const lineY = H * 0.82;
+  // Draw structural details: grid lines + screen glowing border + floor reflex
+  const lineW = Math.min(W * 0.4, 200);
+  const lineY = H * 0.76;
 
   const svg = `
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="screenGrad_${W}_${H}" x1="0%" y1="0%" x2="100%" y2="100%">
+        <!-- Dynamic screen backdrop gradient -->
+        <linearGradient id="panelGrad_${W}_${H}" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stop-color="${stopColor1}" />
           <stop offset="100%" stop-color="${stopColor2}" />
         </linearGradient>
+        
+        <!-- Screen Outer Glowing Halo -->
+        <filter id="screenGlow" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="${accentColor}" flood-opacity="0.25"/>
+        </filter>
       </defs>
       
-      <!-- Panel Base -->
-      <rect width="100%" height="100%" fill="url(#screenGrad_${W}_${H})" rx="4" />
-      
-      <!-- Subtle Tech grid effect for dark theme -->
-      ${isDark ? `
-        <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-          <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(56, 189, 248, 0.03)" stroke-width="1"/>
+      <!-- Transform container for realistic perspective skewing -->
+      <g transform="skewY(${perspectiveAngle})" transform-origin="center">
+        <!-- Panel Base with outer drop shadow glow -->
+        <rect width="100%" height="100%" fill="url(#panelGrad_${W}_${H})" rx="6" filter="url(#screenGlow)" />
+        
+        <!-- Realistic high-density LED panel pixel grid pattern -->
+        <pattern id="ledGridPattern" width="4" height="4" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="0.65" fill="${isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)'}" />
         </pattern>
-        <rect width="100%" height="100%" fill="url(#grid)" />
-      ` : ''}
-      
-      <!-- Accent Line -->
-      <rect x="${(W - lineW) / 2}" y="${lineY}" width="${lineW}" height="4" rx="2" fill="${accentColor}" opacity="0.85" />
-      
-      <!-- Event Typography -->
-      ${textBlock}
+        <rect width="100%" height="100%" fill="url(#ledGridPattern)" />
+
+        <!-- Thin LED screen frame border bezel -->
+        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(37, 99, 235, 0.15)'}" stroke-width="1" />
+        
+        <!-- Subtitle -->
+        ${cleanSub ? `
+          <text x="50%" y="${H * 0.28}" font-family="system-ui, sans-serif" font-size="${subSize}px" font-weight="600" fill="${accentColor}" text-anchor="middle" letter-spacing="0.08em" text-transform="uppercase">${cleanSub}</text>
+        ` : ''}
+
+        <!-- Event Typography Title -->
+        ${titleTextBlock}
+
+        <!-- Accent Line divider -->
+        <line x1="${(W - lineW) / 2}" y1="${lineY}" x2="${(W + lineW) / 2}" y2="${lineY}" stroke="${isDark ? 'rgba(56, 189, 248, 0.3)' : 'rgba(37, 99, 235, 0.2)'}" stroke-width="1.5" />
+
+        <!-- Date and Venue details footer -->
+        ${cleanDate || cleanVenue ? `
+          <text x="50%" y="${lineY + 16}" font-family="system-ui, sans-serif" font-size="${dateSize}px" font-weight="600" fill="${subTextColor}" text-anchor="middle">
+            ${cleanDate} ${cleanDate && cleanVenue ? ' | ' : ''} ${cleanVenue}
+          </text>
+        ` : ''}
+
+        <!-- Organizer Footer text -->
+        ${cleanFooter ? `
+          <text x="50%" y="${H - 12}" font-family="system-ui, sans-serif" font-size="${Math.max(7, dateSize * 0.75)}px" font-weight="500" fill="${subTextColor}" opacity="0.6" text-anchor="middle" letter-spacing="0.05em">${cleanFooter}</text>
+        ` : ''}
+      </g>
     </svg>
   `;
 
@@ -88,23 +126,24 @@ function createScreenBaseSvg(
 }
 
 /**
- * Renders database template preset text logo badges inside SVG
+ * Renders multiple preset text logo badges inline as styled glass cards.
  */
 function createPresetLogosSvg(
   W: number,
   H: number,
   logos: string[],
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  perspectiveAngle: number
 ): Buffer {
   const N = logos.length;
   const isDark = theme === 'dark';
-  const badgeBg = isDark ? 'rgba(30, 41, 59, 0.7)' : '#f8fafc';
-  const badgeBorder = isDark ? '#334155' : '#cbd5e1';
-  const badgeTextColor = isDark ? '#cbd5e1' : '#334155';
+  const badgeBg = isDark ? 'rgba(30, 41, 59, 0.75)' : 'rgba(255, 255, 255, 0.9)';
+  const badgeBorder = isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(37, 99, 235, 0.15)';
+  const badgeTextColor = isDark ? '#e2e8f0' : '#1e293b';
 
-  let badgeW = Math.min(W * 0.18, 140);
-  let badgeH = Math.min(H * 0.14, 38);
-  let gap = Math.min(20, W * 0.03);
+  let badgeW = Math.min(W * 0.18, 120);
+  let badgeH = Math.min(H * 0.12, 34);
+  let gap = Math.min(15, W * 0.025);
 
   const marginX = 20;
   const availableW = W - marginX * 2;
@@ -117,31 +156,24 @@ function createPresetLogosSvg(
     badgeH = badgeH * scale;
   }
 
-  let logoElements = '';
-  if (N === 1) {
-    const lx = W - badgeW - 15;
-    const ly = 12;
-    logoElements = `
-      <rect x="${lx}" y="${ly}" width="${badgeW}" height="${badgeH}" rx="6" fill="${badgeBg}" stroke="${badgeBorder}" stroke-width="1"/>
-      <text x="${lx + badgeW / 2}" y="${ly + badgeH / 2 + 4}" font-family="system-ui, sans-serif" font-size="${Math.max(8, badgeH * 0.35)}px" font-weight="bold" fill="${badgeTextColor}" text-anchor="middle">${logos[0]}</text>
-    `;
-  } else if (N > 1) {
-    const rowW = N * badgeW + (N - 1) * gap;
-    const startX = (W - rowW) / 2;
-    const ly = 12;
+  const rowW = N * badgeW + (N - 1) * gap;
+  const startX = (W - rowW) / 2;
+  // Position slightly higher
+  const ly = 14;
 
-    logoElements = logos.map((logo, i) => {
-      const lx = startX + i * (badgeW + gap);
-      return `
-        <rect x="${lx}" y="${ly}" width="${badgeW}" height="${badgeH}" rx="6" fill="${badgeBg}" stroke="${badgeBorder}" stroke-width="1"/>
-        <text x="${lx + badgeW / 2}" y="${ly + badgeH / 2 + 4}" font-family="system-ui, sans-serif" font-size="${Math.max(8, badgeH * 0.35)}px" font-weight="bold" fill="${badgeTextColor}" text-anchor="middle">${logo}</text>
-      `;
-    }).join('\n');
-  }
+  const logoElements = logos.map((logo, i) => {
+    const lx = startX + i * (badgeW + gap);
+    return `
+      <rect x="${lx}" y="${ly}" width="${badgeW}" height="${badgeH}" rx="6" fill="${badgeBg}" stroke="${badgeBorder}" stroke-width="1"/>
+      <text x="${lx + badgeW / 2}" y="${ly + badgeH / 2 + 4}" font-family="system-ui, sans-serif" font-size="${Math.max(7, badgeH * 0.35)}px" font-weight="700" fill="${badgeTextColor}" text-anchor="middle" letter-spacing="-0.01em">${logo}</text>
+    `;
+  }).join('\n');
 
   const svg = `
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-      ${logoElements}
+      <g transform="skewY(${perspectiveAngle})" transform-origin="center">
+        ${logoElements}
+      </g>
     </svg>
   `;
   return Buffer.from(svg);
@@ -150,12 +182,16 @@ function createPresetLogosSvg(
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
-    const hallId      = formData.get('hallId') as string;
-    const eventName   = formData.get('eventName') as string;
-    const screenConfig = (formData.get('screenConfig') || 'center') as 'center' | 'wings' | 'all';
-    const screenTheme  = (formData.get('screenTheme') || 'light') as 'light' | 'dark';
-    const logosJson   = formData.get('logos') as string;
-    const customLogo  = formData.get('customLogo') as File | null;
+    const hallId        = formData.get('hallId') as string;
+    const eventName     = formData.get('eventName') as string;
+    const eventSubtitle  = (formData.get('eventSubtitle') || '') as string;
+    const eventDate     = (formData.get('eventDate') || '') as string;
+    const eventVenue    = (formData.get('eventVenue') || '') as string;
+    const footerText    = (formData.get('footerText') || '') as string;
+    const screenConfig  = (formData.get('screenConfig') || 'center') as 'center' | 'wings' | 'all';
+    const screenTheme   = (formData.get('screenTheme') || 'light') as 'light' | 'dark';
+    const wingDisplayMode = (formData.get('wingDisplayMode') || 'mirror') as 'mirror' | 'extended';
+    const logosJson     = formData.get('logos') as string;
 
     if (!hallId || isNaN(parseInt(hallId, 10))) {
       return NextResponse.json({ error: 'Valid hallId is required' }, { status: 400 });
@@ -165,8 +201,17 @@ export async function POST(request: Request) {
     }
 
     const logos: string[] = logosJson ? JSON.parse(logosJson) : [];
-    const hasCustomLogo = customLogo && customLogo.size > 0;
-    const hasLogos = hasCustomLogo || logos.length > 0;
+
+    // Parse all custom uploaded logo files (customLogo_0, customLogo_1...)
+    const customLogoBuffers: Buffer[] = [];
+    for (const [key, value] of formData.entries()) {
+      if (key.startsWith('customLogo') && value instanceof File && value.size > 0) {
+        const bytes = await value.arrayBuffer();
+        customLogoBuffers.push(Buffer.from(bytes));
+      }
+    }
+
+    const hasLogos = customLogoBuffers.length > 0 || logos.length > 0;
 
     // Fetch venue hall
     const hall = await prisma.venueHall.findUnique({
@@ -175,13 +220,6 @@ export async function POST(request: Request) {
     if (!hall) {
       return NextResponse.json({ error: 'Hall not found' }, { status: 404 });
     }
-    console.log('API RESOLVED HALL MASK COORDS:', {
-      id: hall.id,
-      name: hall.name,
-      center: { x: hall.centerMaskX, y: hall.centerMaskY, w: hall.centerMaskWidth, h: hall.centerMaskHeight },
-      left: { x: hall.leftMaskX, y: hall.leftMaskY, w: hall.leftMaskWidth, h: hall.leftMaskHeight },
-      right: { x: hall.rightMaskX, y: hall.rightMaskY, w: hall.rightMaskWidth, h: hall.rightMaskHeight },
-    });
     if (!hall.baseImageUrl) {
       return NextResponse.json({ error: 'This hall has no base image configured.' }, { status: 422 });
     }
@@ -207,13 +245,6 @@ export async function POST(request: Request) {
     const baseW = baseMetadata.width ?? 1200;
     const baseH = baseMetadata.height ?? 800;
 
-    // Prepare custom logo file buffer if uploaded
-    let customLogoBuffer: Buffer | null = null;
-    if (hasCustomLogo) {
-      const arrayBuf = await customLogo.arrayBuffer();
-      customLogoBuffer = Buffer.from(arrayBuf);
-    }
-
     const composites: any[] = [];
 
     // Helper to generate composite screen layers
@@ -221,7 +252,8 @@ export async function POST(request: Request) {
       x: number,
       y: number,
       w: number,
-      h: number
+      h: number,
+      screenRole: 'center' | 'left' | 'right'
     ) => {
       if (!w || w <= 0 || !h || h <= 0) return;
       const clampedX = Math.max(0, Math.min(x, baseW - 1));
@@ -229,35 +261,92 @@ export async function POST(request: Request) {
       const clampedW = Math.max(1, Math.min(w, baseW - clampedX));
       const clampedH = Math.max(1, Math.min(h, baseH - clampedY));
 
+      // Perspective Angle skew factor mapping
+      // Taj Lands End left screen tilts slightly up on right side, right screen tilts up on left.
+      // Left screen has positive skew, Right screen has negative skew.
+      let skew = 0;
+      if (screenRole === 'left') skew = 3.5;
+      if (screenRole === 'right') skew = -3.5;
+
+      // In Extended Wing Mode, display content splits contextually
+      let finalTitle = eventName;
+      let finalSub = eventSubtitle;
+      let finalDate = eventDate;
+      let finalVenue = eventVenue;
+      let finalFooter = footerText;
+      let activeLogosList = [...logos];
+      let activeCustomLogos = [...customLogoBuffers];
+
+      if (wingDisplayMode === 'extended') {
+        if (screenRole === 'left') {
+          // Left wing: Sponsor Logo Showcase
+          finalTitle = 'SPONSORS & CO-HOSTS';
+          finalSub = 'OFFICIAL BRAND PARTNERS';
+          finalDate = '';
+          finalVenue = '';
+          finalFooter = '';
+        } else if (screenRole === 'right') {
+          // Right wing: Event Details & Schedule info
+          finalTitle = eventVenue;
+          finalSub = 'SESSION TIMINGS & VENUE';
+          finalDate = eventDate;
+          finalVenue = '';
+          finalFooter = footerText;
+          activeLogosList = [];
+          activeCustomLogos = [];
+        } else {
+          // Center Screen: Main Title & Subtitle only
+          finalDate = '';
+          finalVenue = '';
+        }
+      }
+
+      const hasScreenLogos = activeCustomLogos.length > 0 || activeLogosList.length > 0;
+
       // 1. Create Base screen with text
-      const baseSvg = createScreenBaseSvg(clampedW, clampedH, eventName, screenTheme, hasLogos);
+      const baseSvg = createScreenBaseSvg(
+        clampedW,
+        clampedH,
+        finalTitle,
+        finalSub,
+        finalDate,
+        finalVenue,
+        finalFooter,
+        screenTheme,
+        hasScreenLogos,
+        skew
+      );
       let screenSharp = sharp(baseSvg);
 
       // 2. Overlay Logo badges
       const innerComposites: any[] = [];
 
-      if (customLogoBuffer) {
-        // Option 1: Custom Logo File Uploaded (PNG/JPG)
-        // Set badge dimensions based on screen size
-        const badgeW = Math.round(Math.min(clampedW * 0.22, 140));
-        const badgeH = Math.round(Math.min(clampedH * 0.16, 42));
+      if (activeCustomLogos.length > 0) {
+        // Multi Custom uploaded logos
+        const totalLogosCount = activeCustomLogos.length;
+        const logoW = Math.round(Math.min(clampedW * 0.16, 120));
+        const logoH = Math.round(Math.min(clampedH * 0.12, 34));
+        const logoGap = Math.round(Math.min(15, clampedW * 0.02));
 
-        // Position: Top-right margin
-        const lx = clampedW - badgeW - 15;
-        const ly = 12;
+        const rowW = totalLogosCount * logoW + (totalLogosCount - 1) * logoGap;
+        const startX = (clampedW - rowW) / 2;
+        const ly = 14;
 
-        const resizedLogo = await sharp(customLogoBuffer)
-          .resize({ width: badgeW, height: badgeH, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-          .toBuffer();
+        for (let i = 0; i < totalLogosCount; i++) {
+          const lx = startX + i * (logoW + logoGap);
+          const resizedBuf = await sharp(activeCustomLogos[i])
+            .resize({ width: logoW, height: logoH, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+            .toBuffer();
 
-        innerComposites.push({
-          input: resizedLogo,
-          left: lx,
-          top: ly,
-        });
-      } else if (logos.length > 0) {
-        // Option 2: Preset database template text badges
-        const presetsSvg = createPresetLogosSvg(clampedW, clampedH, logos, screenTheme);
+          innerComposites.push({
+            input: resizedBuf,
+            left: Math.round(lx),
+            top: Math.round(ly),
+          });
+        }
+      } else if (activeLogosList.length > 0) {
+        // Preset database template text badges
+        const presetsSvg = createPresetLogosSvg(clampedW, clampedH, activeLogosList, screenTheme, skew);
         innerComposites.push({
           input: presetsSvg,
           left: 0,
@@ -282,28 +371,30 @@ export async function POST(request: Request) {
       });
     };
 
-    // Composite according to screen configuration selector
-    // 1. Center Screen
+    // Composite Center
     await addScreenComposite(
       hall.centerMaskX,
       hall.centerMaskY,
       hall.centerMaskWidth,
-      hall.centerMaskHeight
+      hall.centerMaskHeight,
+      'center'
     );
 
-    // 2. Left and Right Wing Screens
+    // Composite Left & Right Wings
     if (screenConfig === 'wings' || screenConfig === 'all') {
       await addScreenComposite(
         hall.leftMaskX,
         hall.leftMaskY,
         hall.leftMaskWidth,
-        hall.leftMaskHeight
+        hall.leftMaskHeight,
+        'left'
       );
       await addScreenComposite(
         hall.rightMaskX,
         hall.rightMaskY,
         hall.rightMaskWidth,
-        hall.rightMaskHeight
+        hall.rightMaskHeight,
+        'right'
       );
     }
 
@@ -313,7 +404,6 @@ export async function POST(request: Request) {
       }, { status: 422 });
     }
 
-    // Composite all active screens onto the base image
     const compositedBuffer = await sharp(baseImageBuffer)
       .resize({ width: baseW, height: baseH, fit: 'inside' })
       .composite(composites)

@@ -45,6 +45,9 @@ async function seed() {
         centerMaskX: 300, centerMaskY: 200, centerMaskWidth: 600, centerMaskHeight: 350,
         leftMaskX: 80, leftMaskY: 220, leftMaskWidth: 180, leftMaskHeight: 180,
         rightMaskX: 940, rightMaskY: 220, rightMaskWidth: 180, rightMaskHeight: 180,
+        floorPlanUrl: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl1: 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl2: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=800&q=80',
       },
       {
         venueId: taj.id, name: 'Sea View Pavilion',
@@ -53,6 +56,9 @@ async function seed() {
         centerMaskX: 200, centerMaskY: 150, centerMaskWidth: 800, centerMaskHeight: 350,
         leftMaskX: 50, leftMaskY: 180, leftMaskWidth: 120, leftMaskHeight: 120,
         rightMaskX: 1030, rightMaskY: 180, rightMaskWidth: 120, rightMaskHeight: 120,
+        floorPlanUrl: 'https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl1: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl2: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=800&q=80',
       },
       {
         venueId: jw.id, name: 'Grand Ballroom 1 & 2',
@@ -61,6 +67,9 @@ async function seed() {
         centerMaskX: 250, centerMaskY: 120, centerMaskWidth: 700, centerMaskHeight: 350,
         leftMaskX: 60, leftMaskY: 150, leftMaskWidth: 150, leftMaskHeight: 150,
         rightMaskX: 990, rightMaskY: 150, rightMaskWidth: 150, rightMaskHeight: 150,
+        floorPlanUrl: 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl1: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl2: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
       },
       {
         venueId: oberoi.id, name: 'Plenary Ballroom',
@@ -69,6 +78,9 @@ async function seed() {
         centerMaskX: 300, centerMaskY: 120, centerMaskWidth: 600, centerMaskHeight: 320,
         leftMaskX: 80, leftMaskY: 140, leftMaskWidth: 180, leftMaskHeight: 180,
         rightMaskX: 940, rightMaskY: 140, rightMaskWidth: 180, rightMaskHeight: 180,
+        floorPlanUrl: 'https://images.unsplash.com/photo-1506157786151-b8491531f063?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl1: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl2: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80',
       },
       {
         venueId: itc.id, name: 'Mysore Hall',
@@ -77,6 +89,9 @@ async function seed() {
         centerMaskX: 360, centerMaskY: 180, centerMaskWidth: 480, centerMaskHeight: 280,
         leftMaskX: 100, leftMaskY: 200, leftMaskWidth: 200, leftMaskHeight: 200,
         rightMaskX: 900, rightMaskY: 200, rightMaskWidth: 200, rightMaskHeight: 200,
+        floorPlanUrl: 'https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl1: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl2: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=800&q=80',
       },
       {
         venueId: minto.id, name: 'Main Hall',
@@ -85,6 +100,9 @@ async function seed() {
         centerMaskX: 350, centerMaskY: 120, centerMaskWidth: 500, centerMaskHeight: 320,
         leftMaskX: 100, leftMaskY: 150, leftMaskWidth: 200, leftMaskHeight: 200,
         rightMaskX: 900, rightMaskY: 150, rightMaskWidth: 200, rightMaskHeight: 200,
+        floorPlanUrl: 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl1: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=800&q=80',
+        refPhotoUrl2: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
       },
     ],
   });

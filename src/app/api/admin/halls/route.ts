@@ -3,7 +3,19 @@ import { prisma } from '@/lib/db';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
 
-// GET /api/admin/halls - list all halls with venue info
+// Helper to save uploaded files safely
+async function saveUploadFile(file: File | null, subfolder: string): Promise<string | null> {
+  if (!file || file.size === 0) return null;
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads', subfolder);
+  await mkdir(uploadsDir, { recursive: true });
+  const ext = file.name.split('.').pop() || 'jpg';
+  const filename = `${subfolder}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+  const bytes = await file.arrayBuffer();
+  await writeFile(path.join(uploadsDir, filename), Buffer.from(bytes));
+  return `/uploads/${subfolder}/${filename}`;
+}
+
+// GET /api/admin/halls
 export async function GET() {
   try {
     const halls = await prisma.venueHall.findMany({
@@ -16,7 +28,7 @@ export async function GET() {
   }
 }
 
-// POST /api/admin/halls - create hall with base image upload + multi-screen coordinates
+// POST /api/admin/halls
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
@@ -39,23 +51,34 @@ export async function POST(request: Request) {
     const rightMaskY       = formData.get('rightMaskY') as string;
     const rightMaskWidth   = formData.get('rightMaskWidth') as string;
     const rightMaskHeight  = formData.get('rightMaskHeight') as string;
+    
+    // File parameters
     const baseImage        = formData.get('baseImage') as File | null;
+    const floorPlan        = formData.get('floorPlan') as File | null;
+    const refPhoto1        = formData.get('refPhoto1') as File | null;
+    const refPhoto2        = formData.get('refPhoto2') as File | null;
 
     if (!venueId || !name?.trim()) {
       return NextResponse.json({ error: 'venueId and name are required' }, { status: 400 });
     }
 
-    let baseImageUrl: string | null = formData.get('baseImageUrl') as string | null;
+    let baseImageUrl = formData.get('baseImageUrl') as string | null;
+    let floorPlanUrl = formData.get('floorPlanUrl') as string | null;
+    let refPhotoUrl1 = formData.get('refPhotoUrl1') as string | null;
+    let refPhotoUrl2 = formData.get('refPhotoUrl2') as string | null;
 
-    if (baseImage && baseImage.size > 0) {
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'halls');
-      await mkdir(uploadsDir, { recursive: true });
-      const ext = baseImage.name.split('.').pop() || 'jpg';
-      const filename = `hall_${Date.now()}.${ext}`;
-      const bytes = await baseImage.arrayBuffer();
-      await writeFile(path.join(uploadsDir, filename), Buffer.from(bytes));
-      baseImageUrl = `/uploads/halls/${filename}`;
-    }
+    // Handle uploads
+    const uploadedBase = await saveUploadFile(baseImage, 'halls');
+    if (uploadedBase) baseImageUrl = uploadedBase;
+
+    const uploadedPlan = await saveUploadFile(floorPlan, 'plans');
+    if (uploadedPlan) floorPlanUrl = uploadedPlan;
+
+    const uploadedPhoto1 = await saveUploadFile(refPhoto1, 'gallery');
+    if (uploadedPhoto1) refPhotoUrl1 = uploadedPhoto1;
+
+    const uploadedPhoto2 = await saveUploadFile(refPhoto2, 'gallery');
+    if (uploadedPhoto2) refPhotoUrl2 = uploadedPhoto2;
 
     const hall = await prisma.venueHall.create({
       data: {
@@ -65,7 +88,10 @@ export async function POST(request: Request) {
         width:            parseFloat(width) || 0,
         height:           parseFloat(height) || 0,
         capacity:         parseInt(capacity) || 0,
-        baseImageUrl:     baseImageUrl || null,
+        baseImageUrl,
+        floorPlanUrl,
+        refPhotoUrl1,
+        refPhotoUrl2,
         centerMaskX:      parseInt(centerMaskX) || 0,
         centerMaskY:      parseInt(centerMaskY) || 0,
         centerMaskWidth:  parseInt(centerMaskWidth) || 0,
@@ -88,7 +114,7 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT /api/admin/halls - update hall multi-screen coordinates and base image
+// PUT /api/admin/halls
 export async function PUT(request: Request) {
   try {
     const formData = await request.formData();
@@ -105,20 +131,30 @@ export async function PUT(request: Request) {
     const rightMaskY       = formData.get('rightMaskY') as string;
     const rightMaskWidth   = formData.get('rightMaskWidth') as string;
     const rightMaskHeight  = formData.get('rightMaskHeight') as string;
+
     const baseImage        = formData.get('baseImage') as File | null;
-    let   baseImageUrl     = formData.get('baseImageUrl') as string | null;
+    const floorPlan        = formData.get('floorPlan') as File | null;
+    const refPhoto1        = formData.get('refPhoto1') as File | null;
+    const refPhoto2        = formData.get('refPhoto2') as File | null;
+
+    let baseImageUrl = formData.get('baseImageUrl') as string | null;
+    let floorPlanUrl = formData.get('floorPlanUrl') as string | null;
+    let refPhotoUrl1 = formData.get('refPhotoUrl1') as string | null;
+    let refPhotoUrl2 = formData.get('refPhotoUrl2') as string | null;
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
-    if (baseImage && baseImage.size > 0) {
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'halls');
-      await mkdir(uploadsDir, { recursive: true });
-      const ext = baseImage.name.split('.').pop() || 'jpg';
-      const filename = `hall_${Date.now()}.${ext}`;
-      const bytes = await baseImage.arrayBuffer();
-      await writeFile(path.join(uploadsDir, filename), Buffer.from(bytes));
-      baseImageUrl = `/uploads/halls/${filename}`;
-    }
+    const uploadedBase = await saveUploadFile(baseImage, 'halls');
+    if (uploadedBase) baseImageUrl = uploadedBase;
+
+    const uploadedPlan = await saveUploadFile(floorPlan, 'plans');
+    if (uploadedPlan) floorPlanUrl = uploadedPlan;
+
+    const uploadedPhoto1 = await saveUploadFile(refPhoto1, 'gallery');
+    if (uploadedPhoto1) refPhotoUrl1 = uploadedPhoto1;
+
+    const uploadedPhoto2 = await saveUploadFile(refPhoto2, 'gallery');
+    if (uploadedPhoto2) refPhotoUrl2 = uploadedPhoto2;
 
     const updateData: Record<string, unknown> = {
       centerMaskX:      parseInt(centerMaskX) || 0,
@@ -135,6 +171,9 @@ export async function PUT(request: Request) {
       rightMaskHeight:  parseInt(rightMaskHeight) || 0,
     };
     if (baseImageUrl) updateData.baseImageUrl = baseImageUrl;
+    if (floorPlanUrl) updateData.floorPlanUrl = floorPlanUrl;
+    if (refPhotoUrl1) updateData.refPhotoUrl1 = refPhotoUrl1;
+    if (refPhotoUrl2) updateData.refPhotoUrl2 = refPhotoUrl2;
 
     const hall = await prisma.venueHall.update({
       where: { id: parseInt(id, 10) },
@@ -147,7 +186,7 @@ export async function PUT(request: Request) {
   }
 }
 
-// DELETE /api/admin/halls - delete hall by id
+// DELETE /api/admin/halls
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

@@ -3,14 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import {
   Building2, Layers, MapPin, Plus, Trash2, Loader2, Check,
-  Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings
+  Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings,
+  Map as MapIcon, Upload
 } from 'lucide-react';
 import AdminBoundingBox from '@/components/AdminBoundingBox';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface City    { id: number; name: string; state: string; status: string; }
 interface Venue   { id: number; cityId: number; name: string; address: string; city?: City; }
-interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; centerMaskX: number; centerMaskY: number; centerMaskWidth: number; centerMaskHeight: number; leftMaskX: number; leftMaskY: number; leftMaskWidth: number; leftMaskHeight: number; rightMaskX: number; rightMaskY: number; rightMaskWidth: number; rightMaskHeight: number; venue?: Venue & { city?: City }; }
+interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; floorPlanUrl?: string | null; refPhotoUrl1?: string | null; refPhotoUrl2?: string | null; centerMaskX: number; centerMaskY: number; centerMaskWidth: number; centerMaskHeight: number; leftMaskX: number; leftMaskY: number; leftMaskWidth: number; leftMaskHeight: number; rightMaskX: number; rightMaskY: number; rightMaskWidth: number; rightMaskHeight: number; venue?: Venue & { city?: City }; }
 interface Logo    { id: number; logoName: string; }
 interface Branding{ id: number; templateName: string; logos: Logo[]; }
 
@@ -23,7 +24,6 @@ interface MultiScreenCoords {
   right: ScreenCoords | null;
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
 function useToast() {
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
   const show = (msg: string, type: 'success' | 'error' = 'success') => {
@@ -46,11 +46,22 @@ export default function AdminDashboard() {
   // Forms
   const [cityForm,  setCityForm]  = useState({ name: '', state: '' });
   const [venueForm, setVenueForm] = useState({ cityId: '', name: '', address: '' });
-  const [hallForm,  setHallForm]  = useState({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '' });
+  const [hallForm,  setHallForm]  = useState({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '', floorPlanUrl: '', refPhotoUrl1: '', refPhotoUrl2: '' });
 
   const [hallMasks, setHallMasks] = useState<MultiScreenCoords>({ center: null, left: null, right: null });
+  
+  // File uploads state
   const [hallImageFile, setHallImageFile] = useState<File | null>(null);
   const [hallImagePreview, setHallImagePreview] = useState<string>('');
+  
+  const [floorPlanFile, setFloorPlanFile] = useState<File | null>(null);
+  const [floorPlanPreview, setFloorPlanPreview] = useState<string>('');
+  
+  const [refPhotoFile1, setRefPhotoFile1] = useState<File | null>(null);
+  const [refPhotoPreview1, setRefPhotoPreview1] = useState<string>('');
+  
+  const [refPhotoFile2, setRefPhotoFile2] = useState<File | null>(null);
+  const [refPhotoPreview2, setRefPhotoPreview2] = useState<string>('');
 
   const [brandingForm, setBrandingForm] = useState({ templateName: '', logos: '' });
 
@@ -58,6 +69,14 @@ export default function AdminDashboard() {
   const [editingHall, setEditingHall] = useState<Hall | null>(null);
   const [editMasks,   setEditMasks]   = useState<MultiScreenCoords>({ center: null, left: null, right: null });
   const [editSaving,  setEditSaving]  = useState(false);
+
+  // Modal Uploads
+  const [editFloorPlanFile, setEditFloorPlanFile] = useState<File | null>(null);
+  const [editFloorPlanPreview, setEditFloorPlanPreview] = useState<string>('');
+  const [editPhotoFile1, setEditPhotoFile1] = useState<File | null>(null);
+  const [editPhotoPreview1, setEditPhotoPreview1] = useState<string>('');
+  const [editPhotoFile2, setEditPhotoFile2] = useState<File | null>(null);
+  const [editPhotoPreview2, setEditPhotoPreview2] = useState<string>('');
 
   const [saving, setSaving] = useState(false);
 
@@ -119,9 +138,22 @@ export default function AdminDashboard() {
   // ── Hall handlers ──────────────────────────────────────────────────────────
   const handleHallImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setHallImageFile(file);
-    setHallImagePreview(URL.createObjectURL(file));
+    if (file) { setHallImageFile(file); setHallImagePreview(URL.createObjectURL(file)); }
+  };
+
+  const handleFloorPlanChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { setFloorPlanFile(file); setFloorPlanPreview(URL.createObjectURL(file)); }
+  };
+
+  const handlePhoto1Change = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { setRefPhotoFile1(file); setRefPhotoPreview1(URL.createObjectURL(file)); }
+  };
+
+  const handlePhoto2Change = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) { setRefPhotoFile2(file); setRefPhotoPreview2(URL.createObjectURL(file)); }
   };
 
   const addHall = async () => {
@@ -150,17 +182,31 @@ export default function AdminDashboard() {
     fd.append('rightMaskWidth', String(hallMasks.right?.w ?? 0));
     fd.append('rightMaskHeight', String(hallMasks.right?.h ?? 0));
 
+    // Upload base image
     if (hallImageFile) fd.append('baseImage', hallImageFile);
     else if (hallForm.baseImageUrl) fd.append('baseImageUrl', hallForm.baseImageUrl);
+
+    // Upload Floor plans
+    if (floorPlanFile) fd.append('floorPlan', floorPlanFile);
+    else if (hallForm.floorPlanUrl) fd.append('floorPlanUrl', hallForm.floorPlanUrl);
+
+    // Upload reference photos
+    if (refPhotoFile1) fd.append('refPhoto1', refPhotoFile1);
+    else if (hallForm.refPhotoUrl1) fd.append('refPhotoUrl1', hallForm.refPhotoUrl1);
+
+    if (refPhotoFile2) fd.append('refPhoto2', refPhotoFile2);
+    else if (hallForm.refPhotoUrl2) fd.append('refPhotoUrl2', hallForm.refPhotoUrl2);
 
     const r = await fetch('/api/admin/halls', { method: 'POST', body: fd });
     setSaving(false);
     if (r.ok) {
       show('Hall added');
-      setHallForm({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '' });
+      setHallForm({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '', floorPlanUrl: '', refPhotoUrl1: '', refPhotoUrl2: '' });
       setHallMasks({ center: null, left: null, right: null });
-      setHallImageFile(null);
-      setHallImagePreview('');
+      setHallImageFile(null); setHallImagePreview('');
+      setFloorPlanFile(null); setFloorPlanPreview('');
+      setRefPhotoFile1(null); setRefPhotoPreview1('');
+      setRefPhotoFile2(null); setRefPhotoPreview2('');
       fetchAll();
     } else {
       const err = await r.json().catch(() => ({}));
@@ -196,10 +242,23 @@ export default function AdminDashboard() {
     fd.append('rightMaskWidth', String(editMasks.right?.w ?? 0));
     fd.append('rightMaskHeight', String(editMasks.right?.h ?? 0));
 
+    // Upload edit options
+    if (editFloorPlanFile) fd.append('floorPlan', editFloorPlanFile);
+    if (editPhotoFile1) fd.append('refPhoto1', editPhotoFile1);
+    if (editPhotoFile2) fd.append('refPhoto2', editPhotoFile2);
+
     const r = await fetch('/api/admin/halls', { method: 'PUT', body: fd });
     setEditSaving(false);
-    if (r.ok) { show('Screen bounds saved'); setEditingHall(null); fetchAll(); }
-    else show('Failed to save screen bounds', 'error');
+    if (r.ok) {
+      show('Screen bounds & images saved');
+      setEditingHall(null);
+      setEditFloorPlanFile(null); setEditFloorPlanPreview('');
+      setEditPhotoFile1(null); setEditPhotoPreview1('');
+      setEditPhotoFile2(null); setEditPhotoPreview2('');
+      fetchAll();
+    } else {
+      show('Failed to save', 'error');
+    }
   };
 
   // ── Branding handlers ──────────────────────────────────────────────────────
@@ -227,6 +286,9 @@ export default function AdminDashboard() {
       left: h.leftMaskWidth > 0 ? { x: h.leftMaskX, y: h.leftMaskY, w: h.leftMaskWidth, h: h.leftMaskHeight } : null,
       right: h.rightMaskWidth > 0 ? { x: h.rightMaskX, y: h.rightMaskY, w: h.rightMaskWidth, h: h.rightMaskHeight } : null,
     });
+    setEditFloorPlanPreview(h.floorPlanUrl || '');
+    setEditPhotoPreview1(h.refPhotoUrl1 || '');
+    setEditPhotoPreview2(h.refPhotoUrl2 || '');
   };
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -343,9 +405,10 @@ export default function AdminDashboard() {
                   <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] overflow-y-auto p-6 space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-bold text-slate-800">Edit Bounding Boxes: {editingHall.name}</h3>
+                        <h3 className="font-bold text-slate-800">Edit Bounding Boxes & Tech Files: {editingHall.name}</h3>
                         <button onClick={() => setEditingHall(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                       </div>
+                      
                       {editingHall.baseImageUrl ? (
                         <AdminBoundingBox
                           imageUrl={editingHall.baseImageUrl}
@@ -355,8 +418,37 @@ export default function AdminDashboard() {
                       ) : (
                         <p className="text-amber-600 text-sm bg-amber-50 p-3 rounded-lg">Base image is missing.</p>
                       )}
+
+                      {/* Technical Uploads in Edit Modal */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-100 pt-4">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-500 block mb-1">Blueprint Floor Plan</label>
+                          <input type="file" accept="image/*" onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) { setEditFloorPlanFile(file); setEditFloorPlanPreview(URL.createObjectURL(file)); }
+                          }} className="text-xs block w-full mb-1" />
+                          {editFloorPlanPreview && <img src={editFloorPlanPreview} alt="Floor plan" className="w-full h-20 object-contain bg-slate-50 rounded border" />}
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-500 block mb-1">Gallery Photo 1</label>
+                          <input type="file" accept="image/*" onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) { setEditPhotoFile1(file); setEditPhotoPreview1(URL.createObjectURL(file)); }
+                          }} className="text-xs block w-full mb-1" />
+                          {editPhotoPreview1 && <img src={editPhotoPreview1} alt="Gallery 1" className="w-full h-20 object-cover bg-slate-50 rounded border" />}
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-500 block mb-1">Gallery Photo 2</label>
+                          <input type="file" accept="image/*" onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) { setEditPhotoFile2(file); setEditPhotoPreview2(URL.createObjectURL(file)); }
+                          }} className="text-xs block w-full mb-1" />
+                          {editPhotoPreview2 && <img src={editPhotoPreview2} alt="Gallery 2" className="w-full h-20 object-cover bg-slate-50 rounded border" />}
+                        </div>
+                      </div>
+
                       <button onClick={saveEditMask} disabled={editSaving || !editingHall.baseImageUrl} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                        {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Screen Bounding Boxes
+                        {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Hall Configuration
                       </button>
                     </div>
                   </div>
@@ -377,20 +469,50 @@ export default function AdminDashboard() {
                       <input placeholder="Capacity" type="number" value={hallForm.capacity} onChange={e => setHallForm(f => ({...f, capacity: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                     </div>
 
-                    <div>
-                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Base Image</p>
-                      <input placeholder="Base image URL" value={hallForm.baseImageUrl} onChange={e => setHallForm(f => ({...f, baseImageUrl: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2" />
-                      <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-3 cursor-pointer hover:border-blue-400 transition text-xs text-slate-500">
-                        <ImageIcon className="w-4 h-4" /> Upload image file
-                        <input type="file" accept="image/*" onChange={handleHallImageChange} className="hidden" />
-                      </label>
-                      {hallImagePreview && (
-                        <img src={hallImagePreview} alt="preview" className="mt-2 rounded-lg w-full h-28 object-cover" />
-                      )}
+                    {/* Image uploads */}
+                    <div className="space-y-3 border-t border-slate-100 pt-3">
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><ImageIcon className="w-3.5 h-3.5" /> Stage Backdrop Image</p>
+                        <input placeholder="Base image URL" value={hallForm.baseImageUrl} onChange={e => setHallForm(f => ({...f, baseImageUrl: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 mb-1.5" />
+                        <label className="flex items-center justify-center gap-1.5 border border-dashed border-slate-300 rounded-lg py-2 cursor-pointer hover:bg-slate-50 transition text-[11px] text-slate-500">
+                          <Upload className="w-3.5 h-3.5" /> Upload Stage Photo
+                          <input type="file" accept="image/*" onChange={handleHallImageChange} className="hidden" />
+                        </label>
+                        {hallImagePreview && <img src={hallImagePreview} alt="preview" className="mt-1.5 rounded-lg w-full h-20 object-cover" />}
+                      </div>
+
+                      <div>
+                        <p className="text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1"><MapIcon className="w-3.5 h-3.5" /> Blueprint Floor Plan</p>
+                        <input placeholder="Floor plan URL" value={hallForm.floorPlanUrl} onChange={e => setHallForm(f => ({...f, floorPlanUrl: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 mb-1.5" />
+                        <label className="flex items-center justify-center gap-1.5 border border-dashed border-slate-300 rounded-lg py-2 cursor-pointer hover:bg-slate-50 transition text-[11px] text-slate-500">
+                          <Upload className="w-3.5 h-3.5" /> Upload Floor Plan
+                          <input type="file" accept="image/*" onChange={handleFloorPlanChange} className="hidden" />
+                        </label>
+                        {floorPlanPreview && <img src={floorPlanPreview} alt="preview" className="mt-1.5 rounded-lg w-full h-20 object-contain bg-slate-50 border border-slate-100" />}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Gallery Photo 1</p>
+                          <label className="flex items-center justify-center gap-1 border border-dashed border-slate-300 rounded-lg py-2 cursor-pointer hover:bg-slate-50 transition text-[10px] text-slate-500">
+                            <Upload className="w-3 h-3" /> Photo 1
+                            <input type="file" accept="image/*" onChange={handlePhoto1Change} className="hidden" />
+                          </label>
+                          {refPhotoPreview1 && <img src={refPhotoPreview1} alt="preview" className="mt-1 rounded-lg w-full h-14 object-cover" />}
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Gallery Photo 2</p>
+                          <label className="flex items-center justify-center gap-1 border border-dashed border-slate-300 rounded-lg py-2 cursor-pointer hover:bg-slate-50 transition text-[10px] text-slate-500">
+                            <Upload className="w-3 h-3" /> Photo 2
+                            <input type="file" accept="image/*" onChange={handlePhoto2Change} className="hidden" />
+                          </label>
+                          {refPhotoPreview2 && <img src={refPhotoPreview2} alt="preview" className="mt-1 rounded-lg w-full h-14 object-cover" />}
+                        </div>
+                      </div>
                     </div>
 
                     {(hallImagePreview || hallForm.baseImageUrl) && (
-                      <div>
+                      <div className="border-t border-slate-100 pt-3">
                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Define Screen Zones</p>
                         <AdminBoundingBox
                           imageUrl={hallImagePreview || hallForm.baseImageUrl}
@@ -406,37 +528,36 @@ export default function AdminDashboard() {
 
                   <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Halls ({halls.length})</div>
-                    <div className="divide-y divide-slate-50 max-h-[700px] overflow-y-auto">
-                      {halls.map(h => {
-                        const screensCount = (h.centerMaskWidth > 0 ? 1 : 0) + (h.leftMaskWidth > 0 ? 1 : 0) + (h.rightMaskWidth > 0 ? 1 : 0);
-                        return (
-                          <div key={h.id} className="px-6 py-4 hover:bg-slate-50 transition">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex gap-3 items-start flex-1 min-w-0">
-                                {h.baseImageUrl ? (
-                                  <img src={h.baseImageUrl} alt={h.name} className="w-16 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
-                                ) : (
-                                  <div className="w-16 h-12 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center shrink-0"><ImageIcon className="w-5 h-5 text-slate-300" /></div>
-                                )}
-                                <div className="min-w-0">
-                                  <p className="font-semibold text-slate-800 text-sm truncate">{h.name}</p>
-                                  <p className="text-xs text-slate-400 truncate">{h.venue?.name} · {h.venue?.city?.name}</p>
-                                  <p className="text-xs text-slate-400">{h.length}m × {h.width}m · {h.capacity} pax</p>
-                                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.centerMaskWidth > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>Center {h.centerMaskWidth > 0 ? '✓' : '✗'}</span>
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.leftMaskWidth > 0 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>Left {h.leftMaskWidth > 0 ? '✓' : '✗'}</span>
-                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.rightMaskWidth > 0 ? 'bg-pink-100 text-pink-700' : 'bg-slate-100 text-slate-400'}`}>Right {h.rightMaskWidth > 0 ? '✓' : '✗'}</span>
-                                  </div>
+                    <div className="divide-y divide-slate-50 max-h-[850px] overflow-y-auto">
+                      {halls.map(h => (
+                        <div key={h.id} className="px-6 py-4 hover:bg-slate-50 transition">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex gap-3 items-start flex-1 min-w-0">
+                              {h.baseImageUrl ? (
+                                <img src={h.baseImageUrl} alt={h.name} className="w-16 h-12 object-cover rounded-lg border border-slate-200 shrink-0" />
+                              ) : (
+                                <div className="w-16 h-12 bg-slate-100 rounded-lg border border-slate-200 flex items-center justify-center shrink-0"><ImageIcon className="w-5 h-5 text-slate-300" /></div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-800 text-sm truncate">{h.name}</p>
+                                <p className="text-xs text-slate-400 truncate">{h.venue?.name} · {h.venue?.city?.name}</p>
+                                <p className="text-xs text-slate-400">{h.length}m × {h.width}m · {h.capacity} pax</p>
+                                <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.centerMaskWidth > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>Center {h.centerMaskWidth > 0 ? '✓' : '✗'}</span>
+                                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.leftMaskWidth > 0 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>Left {h.leftMaskWidth > 0 ? '✓' : '✗'}</span>
+                                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.rightMaskWidth > 0 ? 'bg-pink-100 text-pink-700' : 'bg-slate-100 text-slate-400'}`}>Right {h.rightMaskWidth > 0 ? '✓' : '✗'}</span>
+                                  {h.floorPlanUrl && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-teal-150 text-teal-700">Floor Plan ✓</span>}
+                                  {(h.refPhotoUrl1 || h.refPhotoUrl2) && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-150 text-emerald-700">Gallery ✓</span>}
                                 </div>
                               </div>
-                              <div className="flex flex-col gap-1.5 shrink-0">
-                                <button onClick={() => startEditingMasks(h)} className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">Edit Screens</button>
-                                <button onClick={() => deleteHall(h.id)} className="text-xs bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium">Delete</button>
-                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1.5 shrink-0">
+                              <button onClick={() => startEditingMasks(h)} className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">Edit Config</button>
+                              <button onClick={() => deleteHall(h.id)} className="text-xs bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                             </div>
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

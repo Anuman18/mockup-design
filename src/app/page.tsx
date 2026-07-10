@@ -4,12 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   MapPin, Building2, Layers, ChevronRight, ChevronLeft,
   Sparkles, Loader2, Check, Download, Eye,
-  Calendar, Type, Star, Palette, Layout, X, Upload
+  Calendar, Type, Star, Palette, Layout, X, Upload, Info,
+  Image as ImageIcon
 } from 'lucide-react';
 
 interface City    { id: number; name: string; state: string; }
 interface Venue   { id: number; cityId: number; name: string; address: string; }
-interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; centerMaskX: number; centerMaskY: number; centerMaskWidth: number; centerMaskHeight: number; leftMaskX: number; leftMaskY: number; leftMaskWidth: number; leftMaskHeight: number; rightMaskX: number; rightMaskY: number; rightMaskWidth: number; rightMaskHeight: number; }
+interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; floorPlanUrl?: string | null; refPhotoUrl1?: string | null; refPhotoUrl2?: string | null; centerMaskX: number; centerMaskY: number; centerMaskWidth: number; centerMaskHeight: number; leftMaskX: number; leftMaskY: number; leftMaskWidth: number; leftMaskHeight: number; rightMaskX: number; rightMaskY: number; rightMaskWidth: number; rightMaskHeight: number; }
 interface Template{ id: number; name: string; value: string; }
 interface Logo    { id: number; logoName: string; }
 interface Branding{ id: number; templateName: string; logos: Logo[]; }
@@ -53,33 +54,105 @@ function SelectCard({ label, sub, selected, onClick, icon }: { label: string; su
   );
 }
 
-function StyleCard({ label, emoji, selected, onClick }: { label: string; emoji: string; selected: boolean; onClick: () => void; }) {
+function StyleCard({ label, selected, onClick, svgIcon }: { label: string; selected: boolean; onClick: () => void; svgIcon: React.ReactNode; }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`p-4 rounded-2xl border-2 transition-all duration-200 flex flex-col items-center gap-2 text-center group ${selected ? 'border-blue-500 bg-blue-50 shadow-md shadow-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'}`}
+      className={`p-4 rounded-2xl border-2 transition-all duration-200 flex flex-col items-center gap-3 text-center group ${selected ? 'border-blue-500 bg-blue-50/40 shadow-md shadow-blue-100' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50'}`}
     >
-      <span className="text-3xl">{emoji}</span>
-      <span className={`text-xs font-semibold leading-tight ${selected ? 'text-blue-700' : 'text-slate-600'}`}>{label}</span>
+      <div className={`w-16 h-12 flex items-center justify-center rounded-lg border bg-slate-50 transition-all ${selected ? 'border-blue-350 bg-blue-50/70' : 'border-slate-200'}`}>
+        {svgIcon}
+      </div>
+      <span className={`text-[11px] font-bold leading-tight uppercase tracking-wider ${selected ? 'text-blue-700' : 'text-slate-600'}`}>{label}</span>
       {selected && <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center"><Check className="w-2.5 h-2.5 text-white" /></div>}
     </button>
   );
 }
 
-const STAGE_EMOJIS: Record<string, string> = {
-  'Royal Staggered Wood Set': '🏛️',
-  'Seamless Gloss Acrylic Set': '💎',
-  'LED Digital Backdrop Truss': '🎆',
-  'Natural Bamboo & Floral': '🌿',
-  'Minimalist White Riser': '⬜',
+// ─── Stage Blueprint Vector Drawings ─────────────────────────────────────────
+const STAGE_SVGS: Record<string, React.ReactNode> = {
+  'Royal Staggered Wood Set': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="16" width="40" height="10" rx="1" fill="#e2e8f0" stroke="currentColor" strokeWidth="1" />
+      <rect x="8" y="10" width="32" height="6" rx="1" fill="#cbd5e1" stroke="currentColor" strokeWidth="1" />
+      <rect x="14" y="4" width="20" height="6" rx="1" fill="#94a3b8" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+  'Seamless Gloss Acrylic Set': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="24" cy="18" rx="20" ry="8" fill="#e2e8f0" stroke="currentColor" strokeWidth="1" />
+      <ellipse cx="24" cy="14" rx="14" ry="5" fill="#cbd5e1" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+  'LED Digital Backdrop Truss': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="22" width="44" height="6" fill="#cbd5e1" stroke="currentColor" strokeWidth="1" />
+      <line x1="6" y1="4" x2="6" y2="22" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="42" y1="4" x2="42" y2="22" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="6" y1="4" x2="42" y2="4" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="10" y="8" width="28" height="14" fill="#e2e8f0" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+  'Natural Bamboo & Floral': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="16" width="36" height="10" rx="4" fill="#f1f5f9" stroke="currentColor" strokeWidth="1" />
+      <circle cx="10" cy="10" r="4" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.75" />
+      <circle cx="38" cy="10" r="4" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.75" />
+      <path d="M 6 22 Q 12 18 18 22 T 30 22 T 42 22" stroke="currentColor" strokeWidth="1" />
+    </svg>
+  ),
+  'Minimalist White Riser': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="8" y="12" width="32" height="12" rx="1" fill="#f8fafc" stroke="currentColor" strokeWidth="1" />
+      <line x1="8" y1="18" x2="40" y2="18" stroke="currentColor" strokeWidth="0.5" />
+    </svg>
+  )
 };
-const SEATING_EMOJIS: Record<string, string> = {
-  'Theatre Rows Layout': '🎭',
-  'Cluster Round Tables (Banquet)': '🍽️',
-  'Classroom Desks Layout': '📚',
-  'U-Shape Conference': '🤝',
-  'Cocktail Standing': '🥂',
+
+// ─── Seating Blueprint Vector Drawings ───────────────────────────────────────
+const SEATING_SVGS: Record<string, React.ReactNode> = {
+  'Theatre Rows Layout': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="8" r="1.5" fill="currentColor" /><circle cx="18" cy="8" r="1.5" fill="currentColor" /><circle cx="26" cy="8" r="1.5" fill="currentColor" /><circle cx="34" cy="8" r="1.5" fill="currentColor" /><circle cx="42" cy="8" r="1.5" fill="currentColor" />
+      <circle cx="10" cy="16" r="1.5" fill="currentColor" /><circle cx="18" cy="16" r="1.5" fill="currentColor" /><circle cx="26" cy="16" r="1.5" fill="currentColor" /><circle cx="34" cy="16" r="1.5" fill="currentColor" /><circle cx="42" cy="16" r="1.5" fill="currentColor" />
+      <circle cx="10" cy="24" r="1.5" fill="currentColor" /><circle cx="18" cy="24" r="1.5" fill="currentColor" /><circle cx="26" cy="24" r="1.5" fill="currentColor" /><circle cx="34" cy="24" r="1.5" fill="currentColor" /><circle cx="42" cy="24" r="1.5" fill="currentColor" />
+    </svg>
+  ),
+  'Cluster Round Tables (Banquet)': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="14" cy="10" r="5" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.75" />
+      <circle cx="14" cy="3" r="1" fill="currentColor" /><circle cx="8" cy="10" r="1" fill="currentColor" /><circle cx="14" cy="17" r="1" fill="currentColor" /><circle cx="20" cy="10" r="1" fill="currentColor" />
+      <circle cx="34" cy="20" r="5" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.75" />
+      <circle cx="34" cy="13" r="1" fill="currentColor" /><circle cx="28" cy="20" r="1" fill="currentColor" /><circle cx="34" cy="27" r="1" fill="currentColor" /><circle cx="40" cy="20" r="1" fill="currentColor" />
+    </svg>
+  ),
+  'Classroom Desks Layout': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="6" width="14" height="3" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.5" />
+      <circle cx="10" cy="13" r="1" fill="currentColor" /><circle cx="16" cy="13" r="1" fill="currentColor" />
+      <rect x="28" y="6" width="14" height="3" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.5" />
+      <circle cx="32" cy="13" r="1" fill="currentColor" /><circle cx="38" cy="13" r="1" fill="currentColor" />
+      <rect x="6" y="18" width="14" height="3" fill="#cbd5e1" stroke="currentColor" strokeWidth="0.5" />
+      <circle cx="10" cy="25" r="1" fill="currentColor" /><circle cx="16" cy="25" r="1" fill="currentColor" />
+    </svg>
+  ),
+  'U-Shape Conference': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 12 8 L 12 24 L 36 24 L 36 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+      <circle cx="8" cy="10" r="1" fill="currentColor" /><circle cx="8" cy="17" r="1" fill="currentColor" /><circle cx="8" cy="24" r="1" fill="currentColor" />
+      <circle cx="16" cy="28" r="1" fill="currentColor" /><circle cx="24" cy="28" r="1" fill="currentColor" /><circle cx="32" cy="28" r="1" fill="currentColor" />
+      <circle cx="40" cy="10" r="1" fill="currentColor" /><circle cx="40" cy="17" r="1" fill="currentColor" /><circle cx="40" cy="24" r="1" fill="currentColor" />
+    </svg>
+  ),
+  'Cocktail Standing': (
+    <svg className="w-12 h-8 text-slate-500" viewBox="0 0 48 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10" cy="10" r="2.5" fill="#e2e8f0" stroke="currentColor" strokeWidth="0.5" />
+      <circle cx="26" cy="22" r="2.5" fill="#e2e8f0" stroke="currentColor" strokeWidth="0.5" />
+      <circle cx="38" cy="8" r="2.5" fill="#e2e8f0" stroke="currentColor" strokeWidth="0.5" />
+      <circle cx="18" cy="26" r="1" fill="currentColor" /><circle cx="32" cy="12" r="1" fill="currentColor" /><circle cx="44" cy="18" r="1" fill="currentColor" />
+    </svg>
+  )
 };
 
 export default function HomePage() {
@@ -95,6 +168,9 @@ export default function HomePage() {
   const [loadingVenues, setLoadingVenues] = useState(false);
   const [loadingHalls,  setLoadingHalls]  = useState(false);
 
+  // Technical layout details view tabs
+  const [techViewTab, setTechViewTab] = useState<'base' | 'blueprint' | 'gallery'>('base');
+
   // Setup options
   const [stages,    setStages]    = useState<Template[]>([]);
   const [seatings,  setSeatings]  = useState<Template[]>([]);
@@ -105,15 +181,19 @@ export default function HomePage() {
   const [brandings,       setBrandings]       = useState<Branding[]>([]);
   const [selBranding,     setSelBranding]     = useState<Branding | null>(null);
   const [selectedLogos,   setSelectedLogos]   = useState<string[]>([]);
+  
+  // New visual branding inputs
   const [eventName,       setEventName]       = useState('');
+  const [eventSubtitle,   setEventSubtitle]   = useState('');
   const [eventDate,       setEventDate]       = useState('');
+  const [eventVenue,      setEventVenue]      = useState('');
+  const [footerText,      setFooterText]      = useState('');
   const [screenConfig,    setScreenConfig]    = useState<'center' | 'wings' | 'all'>('center');
   const [screenTheme,     setScreenTheme]     = useState<'light' | 'dark'>('light');
+  const [wingDisplayMode, setWingDisplayMode] = useState<'mirror' | 'extended'>('mirror');
 
-  // Custom Logo Upload
-  const [customLogoFile,    setCustomLogoFile]    = useState<File | null>(null);
-  const [customLogoPreview, setCustomLogoPreview] = useState<string>('');
-  const customLogoInputRef = useRef<HTMLInputElement>(null);
+  // Multiple Custom Logos
+  const [customLogoFiles, setCustomLogoFiles] = useState<{ id: string; file: File; preview: string; }[]>([]);
 
   // Visualization Generation
   const [generating,  setGenerating]  = useState(false);
@@ -158,21 +238,35 @@ export default function HomePage() {
     }
   }, [selBranding]);
 
+  // Auto-populate venue text field when hall is selected
+  useEffect(() => {
+    if (selHall && selVenue) {
+      setEventVenue(`${selVenue.name}, ${selCity?.name ?? ''}`);
+    }
+  }, [selHall]);
+
   const handleLogoToggle = (logoName: string) => {
     setSelectedLogos(prev =>
       prev.includes(logoName) ? prev.filter(l => l !== logoName) : [...prev, logoName]
     );
   };
 
-  const handleCustomLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setCustomLogoFile(file);
-      setCustomLogoPreview(URL.createObjectURL(file));
-      // Reset selected database template logos when custom logo is uploaded to prevent confusion
-      setSelBranding(null);
-      setSelectedLogos([]);
-    }
+  const handleCustomLogoAdd = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const list = Array.from(files);
+    const mapped = list.map(f => ({
+      id: `${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      file: f,
+      preview: URL.createObjectURL(f)
+    }));
+    setCustomLogoFiles(prev => [...prev, ...mapped].slice(0, 5)); // cap at 5 logos
+    setSelBranding(null);
+    setSelectedLogos([]);
+  };
+
+  const removeCustomLogo = (id: string) => {
+    setCustomLogoFiles(prev => prev.filter(item => item.id !== id));
   };
 
   const generate = async () => {
@@ -185,14 +279,19 @@ export default function HomePage() {
       const fd = new FormData();
       fd.append('hallId',       String(selHall.id));
       fd.append('eventName',    eventName);
+      fd.append('eventSubtitle', eventSubtitle);
       fd.append('eventDate',    eventDate);
+      fd.append('eventVenue',   eventVenue);
+      fd.append('footerText',   footerText);
       fd.append('screenConfig', screenConfig);
       fd.append('screenTheme',  screenTheme);
+      fd.append('wingDisplayMode', wingDisplayMode);
       fd.append('logos',        JSON.stringify(selectedLogos));
 
-      if (customLogoFile) {
-        fd.append('customLogo', customLogoFile);
-      }
+      // Append all custom co-sponsor logos
+      customLogoFiles.forEach((item, index) => {
+        fd.append(`customLogo_${index}`, item.file);
+      });
 
       const r = await fetch('/api/generate-visualization', { method: 'POST', body: fd });
       const data = await r.json();
@@ -208,7 +307,7 @@ export default function HomePage() {
   const canGoNext = () => {
     if (step === 0) return !!selHall;
     if (step === 1) return !!selStage && !!selSeating;
-    if (step === 2) return !!eventName.trim() && (selectedLogos.length > 0 || !!customLogoFile);
+    if (step === 2) return !!eventName.trim() && (selectedLogos.length > 0 || customLogoFiles.length > 0);
     return true;
   };
 
@@ -316,16 +415,40 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  {selHall?.baseImageUrl && (
-                    <div className="mt-4 rounded-2xl overflow-hidden border border-slate-200 shadow-sm relative">
-                      <img src={selHall.baseImageUrl} alt={selHall.name} className="w-full h-48 object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
-                      <div className="absolute bottom-3 left-3 text-white">
-                        <p className="font-bold text-sm">{selHall.name}</p>
-                        <p className="text-xs opacity-80">{selVenue.name}</p>
+                  {selHall && (
+                    <div className="mt-6 border border-slate-200 rounded-2xl overflow-hidden shadow-sm bg-slate-50 p-4 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Layout & Technical Details</p>
+                          <h4 className="text-base font-extrabold text-slate-800">{selHall.name}</h4>
+                        </div>
+
+                        {/* Layout selector tabs */}
+                        <div className="flex border border-slate-250 rounded-xl overflow-hidden text-xs bg-white">
+                          <button type="button" onClick={() => setTechViewTab('base')} className={`px-3 py-1.5 font-bold transition-all ${techViewTab === 'base' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Backdrop</button>
+                          {selHall.floorPlanUrl && <button type="button" onClick={() => setTechViewTab('blueprint')} className={`px-3 py-1.5 font-bold border-l border-slate-200 transition-all ${techViewTab === 'blueprint' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Blueprint</button>}
+                          {(selHall.refPhotoUrl1 || selHall.refPhotoUrl2) && <button type="button" onClick={() => setTechViewTab('gallery')} className={`px-3 py-1.5 font-bold border-l border-slate-200 transition-all ${techViewTab === 'gallery' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Gallery</button>}
+                        </div>
                       </div>
-                      <div className="absolute top-2 right-2 bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Screen zones configured
+
+                      {/* Display active tech layout */}
+                      <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-inner relative h-56 flex items-center justify-center">
+                        {techViewTab === 'base' && selHall.baseImageUrl && (
+                          <img src={selHall.baseImageUrl} alt={selHall.name} className="w-full h-full object-cover" />
+                        )}
+                        {techViewTab === 'blueprint' && selHall.floorPlanUrl && (
+                          <img src={selHall.floorPlanUrl} alt="Floor blueprint plan" className="w-full h-full object-contain p-2 bg-slate-50" />
+                        )}
+                        {techViewTab === 'gallery' && (
+                          <div className="grid grid-cols-2 gap-2 w-full h-full p-2 bg-slate-50">
+                            {selHall.refPhotoUrl1 ? <img src={selHall.refPhotoUrl1} alt="Aux angle 1" className="w-full h-full object-cover rounded-lg border" /> : <div className="bg-slate-100 flex items-center justify-center rounded-lg text-slate-350 text-[10px]">No Photo</div>}
+                            {selHall.refPhotoUrl2 ? <img src={selHall.refPhotoUrl2} alt="Aux angle 2" className="w-full h-full object-cover rounded-lg border" /> : <div className="bg-slate-100 flex items-center justify-center rounded-lg text-slate-350 text-[10px]">No Photo</div>}
+                          </div>
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3 text-white text-xs flex justify-between items-center">
+                          <span>Physical Size: {selHall.length}m × {selHall.width}m × {selHall.height}m</span>
+                          <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full text-[10px] font-bold">Cap: {selHall.capacity} PAX</span>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -345,7 +468,7 @@ export default function HomePage() {
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-3">Stage Style</label>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                   {stages.map(s => (
-                    <StyleCard key={s.id} label={s.name} emoji={STAGE_EMOJIS[s.name] || '🎪'} selected={selStage?.id === s.id} onClick={() => setSelStage(s)} />
+                    <StyleCard key={s.id} label={s.name} svgIcon={STAGE_SVGS[s.name] || <ImageIcon className="w-6 h-6 text-slate-400" />} selected={selStage?.id === s.id} onClick={() => setSelStage(s)} />
                   ))}
                 </div>
               </div>
@@ -354,7 +477,7 @@ export default function HomePage() {
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-3">Seating Arrangement</label>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                   {seatings.map(s => (
-                    <StyleCard key={s.id} label={s.name} emoji={SEATING_EMOJIS[s.name] || '💺'} selected={selSeating?.id === s.id} onClick={() => setSelSeating(s)} />
+                    <StyleCard key={s.id} label={s.name} svgIcon={SEATING_SVGS[s.name] || <ImageIcon className="w-6 h-6 text-slate-400" />} selected={selSeating?.id === s.id} onClick={() => setSelSeating(s)} />
                   ))}
                 </div>
               </div>
@@ -363,29 +486,74 @@ export default function HomePage() {
 
           {/* ── STEP 2: Theme & Branding ─────────────────────────────────── */}
           {step === 2 && (
-            <div className="space-y-6 animate-fade-in">
+            <div className="space-y-6 animate-fade-in max-h-[70vh] overflow-y-auto pr-2">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Star className="w-5 h-5 text-blue-500" /> Branding & Title Configurator
               </h3>
 
-              {/* Event Title */}
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Title *</label>
-                <div className="relative">
-                  <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              {/* Event Title & Subtitle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Title *</label>
+                  <div className="relative">
+                    <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      placeholder="e.g. Annual Tech Summit"
+                      value={eventName}
+                      onChange={e => setEventName(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Subtitle / Slogan</label>
+                  <div className="relative">
+                    <Type className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      placeholder="e.g. Empowering Digital Infrastructure"
+                      value={eventSubtitle}
+                      onChange={e => setEventSubtitle(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Event Date, Venue and Organizer Footer */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Date</label>
                   <input
-                    placeholder="Enter event name (e.g. Annual Tech Summit 2026)"
-                    value={eventName}
-                    onChange={e => setEventName(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
+                    placeholder="e.g. October 24, 2026"
+                    value={eventDate}
+                    onChange={e => setEventDate(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Event Venue Location</label>
+                  <input
+                    placeholder="e.g. Taj Lands End, Mumbai"
+                    value={eventVenue}
+                    onChange={e => setEventVenue(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Organizer Footer Bar</label>
+                  <input
+                    placeholder="e.g. Ministry of IT, Govt of India"
+                    value={footerText}
+                    onChange={e => setFooterText(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
               </div>
 
-              {/* Screen configuration & Theme Dropdowns */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Layout splits, themes, and screen configs */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-100 pt-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Screen Configuration</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Screen Selection</label>
                   <select
                     value={screenConfig}
                     onChange={e => setScreenConfig(e.target.value as any)}
@@ -397,48 +565,58 @@ export default function HomePage() {
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Screen Theme Style</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Screen Style Theme</label>
                   <select
                     value={screenTheme}
                     onChange={e => setScreenTheme(e.target.value as any)}
-                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700"
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-750"
                   >
                     <option value="light">Minimalist Light (Clean White)</option>
-                    <option value="dark">Premium Corporate (Navy/Blue Gradient)</option>
+                    <option value="dark">Premium Corporate (Navy/LED Grid)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Wing Content Mode</label>
+                  <select
+                    value={wingDisplayMode}
+                    onChange={e => setWingDisplayMode(e.target.value as any)}
+                    disabled={screenConfig === 'center'}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white disabled:opacity-50"
+                  >
+                    <option value="mirror">Mirror Center Screen</option>
+                    <option value="extended">Extended Content (Logos & Details)</option>
                   </select>
                 </div>
               </div>
 
-              {/* Custom Logo Upload Option */}
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Insert Custom Logo (PNG / JPG)</label>
-                {customLogoPreview ? (
-                  <div className="relative rounded-2xl overflow-hidden border-2 border-blue-200 bg-slate-50 p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <img src={customLogoPreview} alt="Custom logo preview" className="w-16 h-12 object-contain bg-white rounded border border-slate-200" />
-                      <div>
-                        <p className="text-xs font-bold text-slate-700">{customLogoFile?.name}</p>
-                        <p className="text-[10px] text-slate-400">Size: {((customLogoFile?.size ?? 0) / 1024).toFixed(1)} KB</p>
+              {/* Custom Sponsor Logos Multi-Upload Option */}
+              <div className="border-t border-slate-100 pt-4">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2">Upload Multiple Sponsor Logos (Up to 5 PNG/JPG)</label>
+                
+                {customLogoFiles.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 bg-slate-50 p-3 rounded-2xl border">
+                    {customLogoFiles.map(item => (
+                      <div key={item.id} className="flex items-center justify-between bg-white rounded-lg border p-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <img src={item.preview} alt="upload preview" className="w-10 h-8 object-contain bg-slate-50 border rounded" />
+                          <span className="font-semibold truncate max-w-[130px]">{item.file.name}</span>
+                        </div>
+                        <button type="button" onClick={() => removeCustomLogo(item.id)} className="text-red-500 hover:text-red-700 font-bold uppercase text-[10px]">Remove</button>
                       </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => { setCustomLogoFile(null); setCustomLogoPreview(''); }}
-                      className="text-red-500 hover:text-red-700 text-xs font-bold uppercase tracking-wider flex items-center gap-1"
-                    >
-                      <X className="w-4 h-4" /> Remove Logo
-                    </button>
+                    ))}
                   </div>
-                ) : (
+                )}
+
+                {customLogoFiles.length < 5 && (
                   <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-250 hover:border-blue-400 rounded-xl p-4 cursor-pointer hover:bg-blue-50/20 transition-all text-xs text-slate-500 font-semibold uppercase tracking-wider">
-                    <Upload className="w-4 h-4 text-blue-500" /> Upload custom logo file
-                    <input type="file" accept="image/png, image/jpeg, image/jpg" ref={customLogoInputRef} onChange={handleCustomLogoChange} className="hidden" />
+                    <Upload className="w-4 h-4 text-blue-500" /> Upload Sponsor Logo File
+                    <input type="file" multiple accept="image/png, image/jpeg, image/jpg" onChange={handleCustomLogoAdd} className="hidden" />
                   </label>
                 )}
               </div>
 
               {/* Preset Branding Templates */}
-              {!customLogoFile && (
+              {customLogoFiles.length === 0 && (
                 <>
                   <div className="relative flex py-2 items-center">
                     <div className="flex-grow border-t border-slate-200"></div>
@@ -505,12 +683,12 @@ export default function HomePage() {
                     <div><span className="text-slate-400 text-xs block">Stage Style</span><b className="text-slate-800">{selStage?.name}</b></div>
                     <div><span className="text-slate-400 text-xs block">Seating</span><b className="text-slate-800">{selSeating?.name}</b></div>
                     <div><span className="text-slate-400 text-xs block">Event Name</span><b className="text-slate-800">{eventName}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Screen Config</span><b className="text-slate-800 uppercase text-xs">{screenConfig} Screen</b></div>
+                    <div><span className="text-slate-400 text-xs block">Screen Config</span><b className="text-slate-800 uppercase text-xs">{screenConfig} ({wingDisplayMode} Mode)</b></div>
                     <div><span className="text-slate-400 text-xs block">Theme Style</span><b className="text-slate-800 uppercase text-xs">{screenTheme} Theme</b></div>
                     <div>
                       <span className="text-slate-400 text-xs block">Logo Mode</span>
                       <b className="text-slate-800 text-xs">
-                        {customLogoFile ? `Custom Logo: ${customLogoFile.name}` : `Presets: ${selectedLogos.join(', ')}`}
+                        {customLogoFiles.length > 0 ? `Custom (${customLogoFiles.length} uploaded)` : `Presets (${selectedLogos.length} selected)`}
                       </b>
                     </div>
                   </div>
@@ -567,7 +745,7 @@ export default function HomePage() {
               {!resultImage && !generating && (
                 <button
                   onClick={generate}
-                  disabled={!selHall || !eventName.trim() || (selectedLogos.length === 0 && !customLogoFile)}
+                  disabled={!selHall || !eventName.trim() || (selectedLogos.length === 0 && customLogoFiles.length === 0)}
                   className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                 >
                   <Sparkles className="w-5 h-5" /> Generate AI Layout
