@@ -25,13 +25,12 @@ function createScreenBaseSvg(
   const cleanVenue = venueText ? venueText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
   const cleanFooter = footerText ? footerText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
 
-  // Theme settings
-  const stopColor1 = isDark ? '#080d1a' : '#ffffff';
-  const stopColor2 = isDark ? '#111827' : '#f1f5f9';
-  const textColor  = isDark ? '#f8fafc' : '#0f172a';
-  const subTextColor = isDark ? '#94a3b8' : '#475569';
+  // Theme settings (Muted off-whites/warm paper-whites for realism instead of blinding pure white blocks)
+  const stopColor1 = isDark ? '#080d1a' : '#fafaf9';
+  const stopColor2 = isDark ? '#111827' : '#e4e4e7';
+  const textColor  = isDark ? '#f8fafc' : '#1c1917';
+  const subTextColor = isDark ? '#94a3b8' : '#57534e';
   const accentColor = isDark ? '#38bdf8' : '#2563eb';
-  const glowIntensity = isDark ? 'rgba(56, 189, 248, 0.45)' : 'rgba(37, 99, 235, 0.15)';
 
   // Responsive font size logic
   const titleSize = Math.min(W * 0.052, H * 0.13, 38);
@@ -77,8 +76,29 @@ function createScreenBaseSvg(
         </linearGradient>
         
         <!-- Screen Outer Glowing Halo -->
-        <filter id="screenGlow" x="-10%" y="-10%" width="120%" height="120%">
-          <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="${accentColor}" flood-opacity="0.25"/>
+        <filter id="screenGlow" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="${accentColor}" flood-opacity="0.2"/>
+        </filter>
+
+        <!-- Ceiling Ambient Shadow: Real physical stage ceilings cast shadow onto the top of the screens -->
+        <linearGradient id="ceilingShadow_${W}_${H}" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="rgba(0, 0, 0, 0.42)" />
+          <stop offset="16%" stop-color="rgba(0, 0, 0, 0.12)" />
+          <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
+        </linearGradient>
+
+        <!-- Stage Spotlight highlight: Realistic highlight reflecting spotlight illumination from above -->
+        <radialGradient id="spotlightGlow_${W}_${H}" cx="50%" cy="0%" r="90%">
+          <stop offset="0%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255, 255, 255, 0.65)'}" />
+          <stop offset="55%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.05)' : 'rgba(255, 255, 255, 0.15)'}" />
+          <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
+        </radialGradient>
+
+        <!-- Anti-reflective matte noise texture: gives a printed paper or slightly textured LED screen surface -->
+        <filter id="matteBackdropTexture_${W}_${H}">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" result="noise" />
+          <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.04 0" />
+          <feComposite operator="in" in2="SourceGraphic" />
         </filter>
       </defs>
       
@@ -87,11 +107,20 @@ function createScreenBaseSvg(
         <!-- Panel Base with outer drop shadow glow -->
         <rect width="100%" height="100%" fill="url(#panelGrad_${W}_${H})" rx="6" filter="url(#screenGlow)" />
         
+        <!-- Overhead spotlight illumination overlay -->
+        <rect width="100%" height="100%" fill="url(#spotlightGlow_${W}_${H})" rx="6" />
+
         <!-- Realistic high-density LED panel pixel grid pattern -->
         <pattern id="ledGridPattern" width="4" height="4" patternUnits="userSpaceOnUse">
           <circle cx="2" cy="2" r="0.65" fill="${isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.03)'}" />
         </pattern>
-        <rect width="100%" height="100%" fill="url(#ledGridPattern)" />
+        <rect width="100%" height="100%" fill="url(#ledGridPattern)" rx="6" />
+
+        <!-- Matte texture grain layer -->
+        <rect width="100%" height="100%" filter="url(#matteBackdropTexture_${W}_${H})" rx="6" />
+
+        <!-- Ceiling frame shadow overlay -->
+        <rect width="100%" height="100%" fill="url(#ceilingShadow_${W}_${H})" rx="6" />
 
         <!-- Thin LED screen frame border bezel -->
         <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(37, 99, 235, 0.15)'}" stroke-width="1" />
