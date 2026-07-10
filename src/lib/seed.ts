@@ -35,44 +35,56 @@ async function seed() {
     data: { cityId: bhopal.id, name: 'Minto Hall', address: 'Shyamla Hills, Bhopal' },
   });
 
-  // Venue Halls (mask coords are % of image, stored as int pixels for a 1200x800 reference)
+  // Venue Halls (mask coords are stored as int pixels for a 1200x800 reference)
   await prisma.venueHall.createMany({
     data: [
       {
         venueId: taj.id, name: 'Grand Ballroom',
         width: 25, length: 45, height: 7.5, capacity: 800,
         baseImageUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=1200&q=80',
-        maskX: 260, maskY: 200, maskWidth: 680, maskHeight: 380,
+        centerMaskX: 300, centerMaskY: 200, centerMaskWidth: 600, centerMaskHeight: 350,
+        leftMaskX: 80, leftMaskY: 220, leftMaskWidth: 180, leftMaskHeight: 180,
+        rightMaskX: 940, rightMaskY: 220, rightMaskWidth: 180, rightMaskHeight: 180,
       },
       {
         venueId: taj.id, name: 'Sea View Pavilion',
         width: 20, length: 30, height: 6.0, capacity: 400,
         baseImageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80',
-        maskX: 200, maskY: 150, maskWidth: 800, maskHeight: 350,
+        centerMaskX: 200, centerMaskY: 150, centerMaskWidth: 800, centerMaskHeight: 350,
+        leftMaskX: 50, leftMaskY: 180, leftMaskWidth: 120, leftMaskHeight: 120,
+        rightMaskX: 1030, rightMaskY: 180, rightMaskWidth: 120, rightMaskHeight: 120,
       },
       {
         venueId: jw.id, name: 'Grand Ballroom 1 & 2',
         width: 30, length: 50, height: 8.5, capacity: 1200,
         baseImageUrl: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?auto=format&fit=crop&w=1200&q=80',
-        maskX: 180, maskY: 100, maskWidth: 840, maskHeight: 400,
+        centerMaskX: 250, centerMaskY: 120, centerMaskWidth: 700, centerMaskHeight: 350,
+        leftMaskX: 60, leftMaskY: 150, leftMaskWidth: 150, leftMaskHeight: 150,
+        rightMaskX: 990, rightMaskY: 150, rightMaskWidth: 150, rightMaskHeight: 150,
       },
       {
         venueId: oberoi.id, name: 'Plenary Ballroom',
         width: 28, length: 48, height: 9.0, capacity: 1000,
         baseImageUrl: 'https://images.unsplash.com/photo-1582719508461-905c673771fd?auto=format&fit=crop&w=1200&q=80',
-        maskX: 300, maskY: 120, maskWidth: 600, maskHeight: 320,
+        centerMaskX: 300, centerMaskY: 120, centerMaskWidth: 600, centerMaskHeight: 320,
+        leftMaskX: 80, leftMaskY: 140, leftMaskWidth: 180, leftMaskHeight: 180,
+        rightMaskX: 940, rightMaskY: 140, rightMaskWidth: 180, rightMaskHeight: 180,
       },
       {
         venueId: itc.id, name: 'Mysore Hall',
         width: 22, length: 38, height: 7.0, capacity: 600,
         baseImageUrl: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?auto=format&fit=crop&w=1200&q=80',
-        maskX: 360, maskY: 180, maskWidth: 480, maskHeight: 280,
+        centerMaskX: 360, centerMaskY: 180, centerMaskWidth: 480, centerMaskHeight: 280,
+        leftMaskX: 100, leftMaskY: 200, leftMaskWidth: 200, leftMaskHeight: 200,
+        rightMaskX: 900, rightMaskY: 200, rightMaskWidth: 200, rightMaskHeight: 200,
       },
       {
         venueId: minto.id, name: 'Main Hall',
         width: 35, length: 60, height: 10.0, capacity: 2000,
         baseImageUrl: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=1200&q=80',
-        maskX: 200, maskY: 80, maskWidth: 800, maskHeight: 480,
+        centerMaskX: 350, centerMaskY: 120, centerMaskWidth: 500, centerMaskHeight: 320,
+        leftMaskX: 100, leftMaskY: 150, leftMaskWidth: 200, leftMaskHeight: 200,
+        rightMaskX: 900, rightMaskY: 150, rightMaskWidth: 200, rightMaskHeight: 200,
       },
     ],
   });

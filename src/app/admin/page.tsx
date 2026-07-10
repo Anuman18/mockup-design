@@ -1,20 +1,27 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Building2, Layers, MapPin, Plus, Trash2, Loader2, Check,
-  Users, Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings
+  Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings
 } from 'lucide-react';
 import AdminBoundingBox from '@/components/AdminBoundingBox';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface City    { id: number; name: string; state: string; status: string; }
 interface Venue   { id: number; cityId: number; name: string; address: string; city?: City; }
-interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; maskX: number; maskY: number; maskWidth: number; maskHeight: number; venue?: Venue & { city?: City }; }
+interface Hall    { id: number; venueId: number; name: string; length: number; width: number; height: number; capacity: number; baseImageUrl?: string | null; centerMaskX: number; centerMaskY: number; centerMaskWidth: number; centerMaskHeight: number; leftMaskX: number; leftMaskY: number; leftMaskWidth: number; leftMaskHeight: number; rightMaskX: number; rightMaskY: number; rightMaskWidth: number; rightMaskHeight: number; venue?: Venue & { city?: City }; }
 interface Logo    { id: number; logoName: string; }
 interface Branding{ id: number; templateName: string; logos: Logo[]; }
 
 type Tab = 'cities' | 'venues' | 'halls' | 'branding';
+
+interface ScreenCoords { x: number; y: number; w: number; h: number; }
+interface MultiScreenCoords {
+  center: ScreenCoords | null;
+  left: ScreenCoords | null;
+  right: ScreenCoords | null;
+}
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function useToast() {
@@ -26,38 +33,34 @@ function useToast() {
   return { toast, show };
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('cities');
   const { toast, show } = useToast();
 
-  // Data
   const [cities,   setCities]   = useState<City[]>([]);
   const [venues,   setVenues]   = useState<Venue[]>([]);
   const [halls,    setHalls]    = useState<Hall[]>([]);
   const [brandings,setBrandings]= useState<Branding[]>([]);
   const [loading,  setLoading]  = useState(true);
 
-  // City form
+  // Forms
   const [cityForm,  setCityForm]  = useState({ name: '', state: '' });
-  // Venue form
   const [venueForm, setVenueForm] = useState({ cityId: '', name: '', address: '' });
-  // Hall form
   const [hallForm,  setHallForm]  = useState({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '' });
-  const [hallMask,  setHallMask]  = useState({ x: 0, y: 0, w: 0, h: 0 });
+
+  const [hallMasks, setHallMasks] = useState<MultiScreenCoords>({ center: null, left: null, right: null });
   const [hallImageFile, setHallImageFile] = useState<File | null>(null);
   const [hallImagePreview, setHallImagePreview] = useState<string>('');
-  // Branding form
+
   const [brandingForm, setBrandingForm] = useState({ templateName: '', logos: '' });
 
-  // Editing hall bounding box
+  // Modal Editing
   const [editingHall, setEditingHall] = useState<Hall | null>(null);
-  const [editMask,    setEditMask]    = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const [editMasks,   setEditMasks]   = useState<MultiScreenCoords>({ center: null, left: null, right: null });
   const [editSaving,  setEditSaving]  = useState(false);
 
   const [saving, setSaving] = useState(false);
 
-  // ── Fetch all data ─────────────────────────────────────────────────────────
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -90,7 +93,7 @@ export default function AdminDashboard() {
   };
 
   const deleteCity = async (id: number) => {
-    if (!confirm('Delete this city and all its venues/halls?')) return;
+    if (!confirm('Delete this city?')) return;
     const r = await fetch(`/api/admin/cities?id=${id}`, { method: 'DELETE' });
     if (r.ok) { show('City deleted'); fetchAll(); }
     else show('Failed to delete', 'error');
@@ -107,7 +110,7 @@ export default function AdminDashboard() {
   };
 
   const deleteVenue = async (id: number) => {
-    if (!confirm('Delete this venue and all its halls?')) return;
+    if (!confirm('Delete this venue?')) return;
     const r = await fetch(`/api/admin/venues?id=${id}`, { method: 'DELETE' });
     if (r.ok) { show('Venue deleted'); fetchAll(); }
     else show('Failed to delete', 'error');
@@ -131,18 +134,31 @@ export default function AdminDashboard() {
     fd.append('width', hallForm.width);
     fd.append('height', hallForm.height);
     fd.append('capacity', hallForm.capacity);
-    fd.append('maskX', String(hallMask.x));
-    fd.append('maskY', String(hallMask.y));
-    fd.append('maskWidth', String(hallMask.w));
-    fd.append('maskHeight', String(hallMask.h));
+
+    fd.append('centerMaskX', String(hallMasks.center?.x ?? 0));
+    fd.append('centerMaskY', String(hallMasks.center?.y ?? 0));
+    fd.append('centerMaskWidth', String(hallMasks.center?.w ?? 0));
+    fd.append('centerMaskHeight', String(hallMasks.center?.h ?? 0));
+
+    fd.append('leftMaskX', String(hallMasks.left?.x ?? 0));
+    fd.append('leftMaskY', String(hallMasks.left?.y ?? 0));
+    fd.append('leftMaskWidth', String(hallMasks.left?.w ?? 0));
+    fd.append('leftMaskHeight', String(hallMasks.left?.h ?? 0));
+
+    fd.append('rightMaskX', String(hallMasks.right?.x ?? 0));
+    fd.append('rightMaskY', String(hallMasks.right?.y ?? 0));
+    fd.append('rightMaskWidth', String(hallMasks.right?.w ?? 0));
+    fd.append('rightMaskHeight', String(hallMasks.right?.h ?? 0));
+
     if (hallImageFile) fd.append('baseImage', hallImageFile);
     else if (hallForm.baseImageUrl) fd.append('baseImageUrl', hallForm.baseImageUrl);
+
     const r = await fetch('/api/admin/halls', { method: 'POST', body: fd });
     setSaving(false);
     if (r.ok) {
       show('Hall added');
       setHallForm({ venueId: '', name: '', length: '', width: '', height: '', capacity: '', baseImageUrl: '' });
-      setHallMask({ x: 0, y: 0, w: 0, h: 0 });
+      setHallMasks({ center: null, left: null, right: null });
       setHallImageFile(null);
       setHallImagePreview('');
       fetchAll();
@@ -164,14 +180,26 @@ export default function AdminDashboard() {
     setEditSaving(true);
     const fd = new FormData();
     fd.append('id', String(editingHall.id));
-    fd.append('maskX', String(editMask.x));
-    fd.append('maskY', String(editMask.y));
-    fd.append('maskWidth', String(editMask.w));
-    fd.append('maskHeight', String(editMask.h));
+
+    fd.append('centerMaskX', String(editMasks.center?.x ?? 0));
+    fd.append('centerMaskY', String(editMasks.center?.y ?? 0));
+    fd.append('centerMaskWidth', String(editMasks.center?.w ?? 0));
+    fd.append('centerMaskHeight', String(editMasks.center?.h ?? 0));
+
+    fd.append('leftMaskX', String(editMasks.left?.x ?? 0));
+    fd.append('leftMaskY', String(editMasks.left?.y ?? 0));
+    fd.append('leftMaskWidth', String(editMasks.left?.w ?? 0));
+    fd.append('leftMaskHeight', String(editMasks.left?.h ?? 0));
+
+    fd.append('rightMaskX', String(editMasks.right?.x ?? 0));
+    fd.append('rightMaskY', String(editMasks.right?.y ?? 0));
+    fd.append('rightMaskWidth', String(editMasks.right?.w ?? 0));
+    fd.append('rightMaskHeight', String(editMasks.right?.h ?? 0));
+
     const r = await fetch('/api/admin/halls', { method: 'PUT', body: fd });
     setEditSaving(false);
-    if (r.ok) { show('Bounding box saved'); setEditingHall(null); fetchAll(); }
-    else show('Failed to save bounding box', 'error');
+    if (r.ok) { show('Screen bounds saved'); setEditingHall(null); fetchAll(); }
+    else show('Failed to save screen bounds', 'error');
   };
 
   // ── Branding handlers ──────────────────────────────────────────────────────
@@ -186,13 +214,21 @@ export default function AdminDashboard() {
   };
 
   const deleteBranding = async (id: number) => {
-    if (!confirm('Delete this branding template?')) return;
+    if (!confirm('Delete this template?')) return;
     const r = await fetch(`/api/admin/brandings?id=${id}`, { method: 'DELETE' });
     if (r.ok) { show('Branding deleted'); fetchAll(); }
     else show('Failed to delete', 'error');
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const startEditingMasks = (h: Hall) => {
+    setEditingHall(h);
+    setEditMasks({
+      center: h.centerMaskWidth > 0 ? { x: h.centerMaskX, y: h.centerMaskY, w: h.centerMaskWidth, h: h.centerMaskHeight } : null,
+      left: h.leftMaskWidth > 0 ? { x: h.leftMaskX, y: h.leftMaskY, w: h.leftMaskWidth, h: h.leftMaskHeight } : null,
+      right: h.rightMaskWidth > 0 ? { x: h.rightMaskX, y: h.rightMaskY, w: h.rightMaskWidth, h: h.rightMaskHeight } : null,
+    });
+  };
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'cities',   label: 'Cities',   icon: <MapPin className="w-4 h-4" /> },
     { id: 'venues',   label: 'Venues',   icon: <Building2 className="w-4 h-4" /> },
@@ -202,7 +238,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
           {toast.type === 'success' ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
@@ -210,7 +245,6 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -229,7 +263,6 @@ export default function AdminDashboard() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8 space-y-6">
-        {/* Tab Bar */}
         <div className="flex gap-1 bg-slate-100 rounded-xl p-1 w-fit">
           {tabs.map(t => (
             <button
@@ -246,49 +279,40 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-center h-48"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
         ) : (
           <>
-            {/* ─── CITIES ─────────────────────────────────────────────────── */}
             {activeTab === 'cities' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Add form */}
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                   <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add City</h2>
-                  <input placeholder="City name (e.g. Bhopal)" value={cityForm.name} onChange={e => setCityForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
-                  <input placeholder="State (e.g. Madhya Pradesh)" value={cityForm.state} onChange={e => setCityForm(f => ({...f, state: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <input placeholder="City name" value={cityForm.name} onChange={e => setCityForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <input placeholder="State" value={cityForm.state} onChange={e => setCityForm(f => ({...f, state: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   <button onClick={addCity} disabled={saving} className="w-full bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-xl hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add City
                   </button>
                 </div>
-
-                {/* List */}
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Cities ({cities.length})</div>
-                  {cities.length === 0 ? (
-                    <p className="text-center text-slate-400 py-12 text-sm">No cities yet.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-50">
-                      {cities.map(c => (
-                        <div key={c.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 transition">
-                          <div>
-                            <p className="font-medium text-slate-800 text-sm">{c.name}</p>
-                            <p className="text-xs text-slate-400">{c.state}</p>
-                          </div>
-                          <button onClick={() => deleteCity(c.id)} className="text-red-400 hover:text-red-600 transition"><Trash2 className="w-4 h-4" /></button>
+                  <div className="divide-y divide-slate-50">
+                    {cities.map(c => (
+                      <div key={c.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 transition">
+                        <div>
+                          <p className="font-medium text-slate-800 text-sm">{c.name}</p>
+                          <p className="text-xs text-slate-400">{c.state}</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <button onClick={() => deleteCity(c.id)} className="text-red-400 hover:text-red-600 transition"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* ─── VENUES ─────────────────────────────────────────────────── */}
             {activeTab === 'venues' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                   <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add Venue</h2>
                   <select value={venueForm.cityId} onChange={e => setVenueForm(f => ({...f, cityId: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                     <option value="">Select City</option>
-                    {cities.map(c => <option key={c.id} value={c.id}>{c.name}, {c.state}</option>)}
+                    {cities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                   </select>
                   <input placeholder="Venue name" value={venueForm.name} onChange={e => setVenueForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   <input placeholder="Address" value={venueForm.address} onChange={e => setVenueForm(f => ({...f, address: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
@@ -298,61 +322,54 @@ export default function AdminDashboard() {
                 </div>
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Venues ({venues.length})</div>
-                  {venues.length === 0 ? (
-                    <p className="text-center text-slate-400 py-12 text-sm">No venues yet.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-50">
-                      {venues.map(v => (
-                        <div key={v.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 transition">
-                          <div>
-                            <p className="font-medium text-slate-800 text-sm">{v.name}</p>
-                            <p className="text-xs text-slate-400">{v.address} · {(v as any).city?.name}</p>
-                          </div>
-                          <button onClick={() => deleteVenue(v.id)} className="text-red-400 hover:text-red-600 transition"><Trash2 className="w-4 h-4" /></button>
+                  <div className="divide-y divide-slate-50">
+                    {venues.map(v => (
+                      <div key={v.id} className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50 transition">
+                        <div>
+                          <p className="font-medium text-slate-800 text-sm">{v.name}</p>
+                          <p className="text-xs text-slate-400">{v.address} · {v.city?.name}</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <button onClick={() => deleteVenue(v.id)} className="text-red-400 hover:text-red-600 transition"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* ─── HALLS ──────────────────────────────────────────────────── */}
             {activeTab === 'halls' && (
               <div className="space-y-6">
-                {/* Edit bounding box modal */}
                 {editingHall && (
                   <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[95vh] overflow-y-auto p-6 space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-bold text-slate-800">Edit Bounding Box: {editingHall.name}</h3>
+                        <h3 className="font-bold text-slate-800">Edit Bounding Boxes: {editingHall.name}</h3>
                         <button onClick={() => setEditingHall(null)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
                       </div>
                       {editingHall.baseImageUrl ? (
                         <AdminBoundingBox
                           imageUrl={editingHall.baseImageUrl}
-                          initialCoords={{ x: editingHall.maskX, y: editingHall.maskY, w: editingHall.maskWidth, h: editingHall.maskHeight }}
-                          onSave={c => setEditMask({ x: c.x, y: c.y, w: c.w, h: c.h })}
+                          initialCoords={editMasks}
+                          onChange={c => setEditMasks(c)}
                         />
                       ) : (
-                        <p className="text-amber-600 text-sm bg-amber-50 p-3 rounded-lg">This hall has no base image. Please add one first.</p>
+                        <p className="text-amber-600 text-sm bg-amber-50 p-3 rounded-lg">Base image is missing.</p>
                       )}
                       <button onClick={saveEditMask} disabled={editSaving || !editingHall.baseImageUrl} className="w-full bg-blue-600 text-white py-2.5 rounded-xl font-semibold text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                        {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Bounding Box
+                        {editSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save Screen Bounding Boxes
                       </button>
                     </div>
                   </div>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                  {/* Add form */}
                   <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                     <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add Hall</h2>
                     <select value={hallForm.venueId} onChange={e => setHallForm(f => ({...f, venueId: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white">
                       <option value="">Select Venue</option>
                       {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                     </select>
-                    <input placeholder="Hall name (e.g. Grand Ballroom)" value={hallForm.name} onChange={e => setHallForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                    <input placeholder="Hall name" value={hallForm.name} onChange={e => setHallForm(f => ({...f, name: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                     <div className="grid grid-cols-2 gap-2">
                       <input placeholder="Length (m)" type="number" value={hallForm.length} onChange={e => setHallForm(f => ({...f, length: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                       <input placeholder="Width (m)" type="number" value={hallForm.width} onChange={e => setHallForm(f => ({...f, width: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
@@ -360,10 +377,9 @@ export default function AdminDashboard() {
                       <input placeholder="Capacity" type="number" value={hallForm.capacity} onChange={e => setHallForm(f => ({...f, capacity: e.target.value}))} className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                     </div>
 
-                    {/* Base Image */}
                     <div>
                       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Base Image</p>
-                      <input placeholder="Or paste image URL" value={hallForm.baseImageUrl} onChange={e => setHallForm(f => ({...f, baseImageUrl: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2" />
+                      <input placeholder="Base image URL" value={hallForm.baseImageUrl} onChange={e => setHallForm(f => ({...f, baseImageUrl: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mb-2" />
                       <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl p-3 cursor-pointer hover:border-blue-400 transition text-xs text-slate-500">
                         <ImageIcon className="w-4 h-4" /> Upload image file
                         <input type="file" accept="image/*" onChange={handleHallImageChange} className="hidden" />
@@ -373,13 +389,12 @@ export default function AdminDashboard() {
                       )}
                     </div>
 
-                    {/* Bounding box */}
                     {(hallImagePreview || hallForm.baseImageUrl) && (
                       <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Define Screen Zone</p>
+                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Define Screen Zones</p>
                         <AdminBoundingBox
                           imageUrl={hallImagePreview || hallForm.baseImageUrl}
-                          onSave={c => setHallMask({ x: c.x, y: c.y, w: c.w, h: c.h })}
+                          onChange={c => setHallMasks(c)}
                         />
                       </div>
                     )}
@@ -389,14 +404,12 @@ export default function AdminDashboard() {
                     </button>
                   </div>
 
-                  {/* Hall list */}
                   <div className="lg:col-span-3 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">All Halls ({halls.length})</div>
-                    {halls.length === 0 ? (
-                      <p className="text-center text-slate-400 py-12 text-sm">No halls yet.</p>
-                    ) : (
-                      <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
-                        {halls.map(h => (
+                    <div className="divide-y divide-slate-50 max-h-[700px] overflow-y-auto">
+                      {halls.map(h => {
+                        const screensCount = (h.centerMaskWidth > 0 ? 1 : 0) + (h.leftMaskWidth > 0 ? 1 : 0) + (h.rightMaskWidth > 0 ? 1 : 0);
+                        return (
                           <div key={h.id} className="px-6 py-4 hover:bg-slate-50 transition">
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex gap-3 items-start flex-1 min-w-0">
@@ -407,34 +420,34 @@ export default function AdminDashboard() {
                                 )}
                                 <div className="min-w-0">
                                   <p className="font-semibold text-slate-800 text-sm truncate">{h.name}</p>
-                                  <p className="text-xs text-slate-400 truncate">{(h as any).venue?.name} · {(h as any).venue?.city?.name}</p>
+                                  <p className="text-xs text-slate-400 truncate">{h.venue?.name} · {h.venue?.city?.name}</p>
                                   <p className="text-xs text-slate-400">{h.length}m × {h.width}m · {h.capacity} pax</p>
-                                  <div className={`mt-1 inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${h.maskWidth > 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                    {h.maskWidth > 0 ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                                    {h.maskWidth > 0 ? `Mask: ${h.maskWidth}×${h.maskHeight}px` : 'No mask defined'}
+                                  <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.centerMaskWidth > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>Center {h.centerMaskWidth > 0 ? '✓' : '✗'}</span>
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.leftMaskWidth > 0 ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-400'}`}>Left {h.leftMaskWidth > 0 ? '✓' : '✗'}</span>
+                                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${h.rightMaskWidth > 0 ? 'bg-pink-100 text-pink-700' : 'bg-slate-100 text-slate-400'}`}>Right {h.rightMaskWidth > 0 ? '✓' : '✗'}</span>
                                   </div>
                                 </div>
                               </div>
                               <div className="flex flex-col gap-1.5 shrink-0">
-                                <button onClick={() => { setEditingHall(h); setEditMask({ x: h.maskX, y: h.maskY, w: h.maskWidth, h: h.maskHeight }); }} className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">Edit Mask</button>
+                                <button onClick={() => startEditingMasks(h)} className="text-xs bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-medium whitespace-nowrap">Edit Screens</button>
                                 <button onClick={() => deleteHall(h.id)} className="text-xs bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg font-medium">Delete</button>
                               </div>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* ─── BRANDING ────────────────────────────────────────────────── */}
             {activeTab === 'branding' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
                   <h2 className="font-bold text-slate-800 flex items-center gap-2"><Plus className="w-4 h-4 text-blue-500" /> Add Branding Template</h2>
-                  <input placeholder="Template name (e.g. Corporate Tech Summit)" value={brandingForm.templateName} onChange={e => setBrandingForm(f => ({...f, templateName: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                  <input placeholder="Template name" value={brandingForm.templateName} onChange={e => setBrandingForm(f => ({...f, templateName: e.target.value}))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                   <div>
                     <label className="text-xs text-slate-500 mb-1 block">Logos (comma-separated names)</label>
                     <textarea placeholder="e.g. Tata Group, Reliance, NASSCOM" value={brandingForm.logos} onChange={e => setBrandingForm(f => ({...f, logos: e.target.value}))} rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
@@ -445,25 +458,21 @@ export default function AdminDashboard() {
                 </div>
                 <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 font-semibold text-sm text-slate-600">Branding Templates ({brandings.length})</div>
-                  {brandings.length === 0 ? (
-                    <p className="text-center text-slate-400 py-12 text-sm">No templates yet.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-50">
-                      {brandings.map(b => (
-                        <div key={b.id} className="flex items-start justify-between gap-4 px-6 py-4 hover:bg-slate-50 transition">
-                          <div>
-                            <p className="font-semibold text-slate-800 text-sm">{b.templateName}</p>
-                            <div className="flex flex-wrap gap-1.5 mt-1.5">
-                              {b.logos.map(l => (
-                                <span key={l.id} className="bg-slate-100 text-slate-600 text-[11px] px-2 py-0.5 rounded-full">{l.logoName}</span>
-                              ))}
-                            </div>
+                  <div className="divide-y divide-slate-50">
+                    {brandings.map(b => (
+                      <div key={b.id} className="flex items-start justify-between gap-4 px-6 py-4 hover:bg-slate-50 transition">
+                        <div>
+                          <p className="font-semibold text-slate-800 text-sm">{b.templateName}</p>
+                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                            {b.logos.map(l => (
+                              <span key={l.id} className="bg-slate-100 text-slate-600 text-[11px] px-2 py-0.5 rounded-full">{l.logoName}</span>
+                            ))}
                           </div>
-                          <button onClick={() => deleteBranding(b.id)} className="text-red-400 hover:text-red-600 mt-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                        <button onClick={() => deleteBranding(b.id)} className="text-red-400 hover:text-red-600 mt-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

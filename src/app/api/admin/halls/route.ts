@@ -16,22 +16,30 @@ export async function GET() {
   }
 }
 
-// POST /api/admin/halls - create hall with base image upload + mask coordinates
+// POST /api/admin/halls - create hall with base image upload + multi-screen coordinates
 export async function POST(request: Request) {
   try {
     const formData = await request.formData();
 
-    const venueId    = formData.get('venueId') as string;
-    const name       = formData.get('name') as string;
-    const length     = formData.get('length') as string;
-    const width      = formData.get('width') as string;
-    const height     = formData.get('height') as string;
-    const capacity   = formData.get('capacity') as string;
-    const maskX      = formData.get('maskX') as string;
-    const maskY      = formData.get('maskY') as string;
-    const maskWidth  = formData.get('maskWidth') as string;
-    const maskHeight = formData.get('maskHeight') as string;
-    const baseImage  = formData.get('baseImage') as File | null;
+    const venueId          = formData.get('venueId') as string;
+    const name             = formData.get('name') as string;
+    const length           = formData.get('length') as string;
+    const width            = formData.get('width') as string;
+    const height           = formData.get('height') as string;
+    const capacity         = formData.get('capacity') as string;
+    const centerMaskX      = formData.get('centerMaskX') as string;
+    const centerMaskY      = formData.get('centerMaskY') as string;
+    const centerMaskWidth  = formData.get('centerMaskWidth') as string;
+    const centerMaskHeight = formData.get('centerMaskHeight') as string;
+    const leftMaskX        = formData.get('leftMaskX') as string;
+    const leftMaskY        = formData.get('leftMaskY') as string;
+    const leftMaskWidth    = formData.get('leftMaskWidth') as string;
+    const leftMaskHeight   = formData.get('leftMaskHeight') as string;
+    const rightMaskX       = formData.get('rightMaskX') as string;
+    const rightMaskY       = formData.get('rightMaskY') as string;
+    const rightMaskWidth   = formData.get('rightMaskWidth') as string;
+    const rightMaskHeight  = formData.get('rightMaskHeight') as string;
+    const baseImage        = formData.get('baseImage') as File | null;
 
     if (!venueId || !name?.trim()) {
       return NextResponse.json({ error: 'venueId and name are required' }, { status: 400 });
@@ -39,7 +47,6 @@ export async function POST(request: Request) {
 
     let baseImageUrl: string | null = formData.get('baseImageUrl') as string | null;
 
-    // Handle image upload
     if (baseImage && baseImage.size > 0) {
       const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'halls');
       await mkdir(uploadsDir, { recursive: true });
@@ -52,17 +59,25 @@ export async function POST(request: Request) {
 
     const hall = await prisma.venueHall.create({
       data: {
-        venueId:     parseInt(venueId, 10),
-        name:        name.trim(),
-        length:      parseFloat(length) || 0,
-        width:       parseFloat(width) || 0,
-        height:      parseFloat(height) || 0,
-        capacity:    parseInt(capacity) || 0,
-        baseImageUrl: baseImageUrl || null,
-        maskX:       parseInt(maskX) || 0,
-        maskY:       parseInt(maskY) || 0,
-        maskWidth:   parseInt(maskWidth) || 0,
-        maskHeight:  parseInt(maskHeight) || 0,
+        venueId:          parseInt(venueId, 10),
+        name:             name.trim(),
+        length:           parseFloat(length) || 0,
+        width:            parseFloat(width) || 0,
+        height:           parseFloat(height) || 0,
+        capacity:         parseInt(capacity) || 0,
+        baseImageUrl:     baseImageUrl || null,
+        centerMaskX:      parseInt(centerMaskX) || 0,
+        centerMaskY:      parseInt(centerMaskY) || 0,
+        centerMaskWidth:  parseInt(centerMaskWidth) || 0,
+        centerMaskHeight: parseInt(centerMaskHeight) || 0,
+        leftMaskX:        parseInt(leftMaskX) || 0,
+        leftMaskY:        parseInt(leftMaskY) || 0,
+        leftMaskWidth:    parseInt(leftMaskWidth) || 0,
+        leftMaskHeight:   parseInt(leftMaskHeight) || 0,
+        rightMaskX:       parseInt(rightMaskX) || 0,
+        rightMaskY:       parseInt(rightMaskY) || 0,
+        rightMaskWidth:   parseInt(rightMaskWidth) || 0,
+        rightMaskHeight:  parseInt(rightMaskHeight) || 0,
       },
     });
 
@@ -73,17 +88,25 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT /api/admin/halls - update hall mask coordinates and base image
+// PUT /api/admin/halls - update hall multi-screen coordinates and base image
 export async function PUT(request: Request) {
   try {
     const formData = await request.formData();
-    const id         = formData.get('id') as string;
-    const maskX      = formData.get('maskX') as string;
-    const maskY      = formData.get('maskY') as string;
-    const maskWidth  = formData.get('maskWidth') as string;
-    const maskHeight = formData.get('maskHeight') as string;
-    const baseImage  = formData.get('baseImage') as File | null;
-    let   baseImageUrl = formData.get('baseImageUrl') as string | null;
+    const id               = formData.get('id') as string;
+    const centerMaskX      = formData.get('centerMaskX') as string;
+    const centerMaskY      = formData.get('centerMaskY') as string;
+    const centerMaskWidth  = formData.get('centerMaskWidth') as string;
+    const centerMaskHeight = formData.get('centerMaskHeight') as string;
+    const leftMaskX        = formData.get('leftMaskX') as string;
+    const leftMaskY        = formData.get('leftMaskY') as string;
+    const leftMaskWidth    = formData.get('leftMaskWidth') as string;
+    const leftMaskHeight   = formData.get('leftMaskHeight') as string;
+    const rightMaskX       = formData.get('rightMaskX') as string;
+    const rightMaskY       = formData.get('rightMaskY') as string;
+    const rightMaskWidth   = formData.get('rightMaskWidth') as string;
+    const rightMaskHeight  = formData.get('rightMaskHeight') as string;
+    const baseImage        = formData.get('baseImage') as File | null;
+    let   baseImageUrl     = formData.get('baseImageUrl') as string | null;
 
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
 
@@ -98,10 +121,18 @@ export async function PUT(request: Request) {
     }
 
     const updateData: Record<string, unknown> = {
-      maskX:      parseInt(maskX) || 0,
-      maskY:      parseInt(maskY) || 0,
-      maskWidth:  parseInt(maskWidth) || 0,
-      maskHeight: parseInt(maskHeight) || 0,
+      centerMaskX:      parseInt(centerMaskX) || 0,
+      centerMaskY:      parseInt(centerMaskY) || 0,
+      centerMaskWidth:  parseInt(centerMaskWidth) || 0,
+      centerMaskHeight: parseInt(centerMaskHeight) || 0,
+      leftMaskX:        parseInt(leftMaskX) || 0,
+      leftMaskY:        parseInt(leftMaskY) || 0,
+      leftMaskWidth:    parseInt(leftMaskWidth) || 0,
+      leftMaskHeight:   parseInt(leftMaskHeight) || 0,
+      rightMaskX:       parseInt(rightMaskX) || 0,
+      rightMaskY:       parseInt(rightMaskY) || 0,
+      rightMaskWidth:   parseInt(rightMaskWidth) || 0,
+      rightMaskHeight:  parseInt(rightMaskHeight) || 0,
     };
     if (baseImageUrl) updateData.baseImageUrl = baseImageUrl;
 

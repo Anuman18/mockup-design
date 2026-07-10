@@ -5,23 +5,44 @@ import { Maximize2, Trash2 } from 'lucide-react';
 
 interface Coords { x: number; y: number; w: number; h: number; }
 
-interface AdminBoundingBoxProps {
-  imageUrl: string;
-  initialCoords?: Coords | null;
-  /** Called with PIXEL coordinates relative to the natural image size */
-  onSave: (coords: Coords) => void;
+interface MultiScreenCoords {
+  center: Coords | null;
+  left: Coords | null;
+  right: Coords | null;
 }
 
-export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: AdminBoundingBoxProps) {
+interface AdminBoundingBoxProps {
+  imageUrl: string;
+  initialCoords?: MultiScreenCoords | null;
+  /** Callback fired whenever any screen's coordinates change */
+  onChange: (coords: MultiScreenCoords) => void;
+}
+
+type ScreenType = 'center' | 'left' | 'right';
+
+export default function AdminBoundingBox({ imageUrl, initialCoords, onChange }: AdminBoundingBoxProps) {
   const imageRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const [activeScreen, setActiveScreen] = useState<ScreenType>('center');
   const [isDrawing, setIsDrawing] = useState(false);
   const [startPos, setStartPos] = useState({ x: 0, y: 0 });
   const [currentPos, setCurrentPos] = useState({ x: 0, y: 0 });
-  const [coords, setCoords] = useState<Coords | null>(initialCoords ?? null);
-  // naturalWidth/Height of the loaded image
+
+  const [screens, setScreens] = useState<MultiScreenCoords>({
+    center: initialCoords?.center ?? null,
+    left: initialCoords?.left ?? null,
+    right: initialCoords?.right ?? null,
+  });
+
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
+
+  // Distribute config changes up
+  const updateScreen = (type: ScreenType, coords: Coords | null) => {
+    const updated = { ...screens, [type]: coords };
+    setScreens(updated);
+    onChange(updated);
+  };
 
   const getDisplayCoords = (pixelCoords: Coords, canvas: HTMLCanvasElement): Coords => {
     if (!naturalSize.w || !naturalSize.h) return pixelCoords;
@@ -43,41 +64,60 @@ export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: Ad
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (coords && naturalSize.w > 0) {
-      const d = getDisplayCoords(coords, canvas);
-      // Dark overlay
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.clearRect(d.x, d.y, d.w, d.h);
-      // Box stroke
-      ctx.strokeStyle = '#2563eb';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([]);
-      ctx.strokeRect(d.x, d.y, d.w, d.h);
-      // Inner highlight
-      ctx.fillStyle = 'rgba(37,99,235,0.12)';
-      ctx.fillRect(d.x, d.y, d.w, d.h);
-      // Label
-      ctx.font = 'bold 11px sans-serif';
-      const labelY = d.y >= 22 ? d.y - 4 : d.y + d.h + 16;
-      ctx.fillStyle = '#2563eb';
-      ctx.fillText(`Screen Zone  [${coords.w}×${coords.h} px]`, d.x + 4, labelY);
-    } else if (isDrawing) {
+    // Draw active drawing box first
+    if (isDrawing) {
       const x = Math.min(startPos.x, currentPos.x);
       const y = Math.min(startPos.y, currentPos.y);
       const w = Math.abs(startPos.x - currentPos.x);
       const h = Math.abs(startPos.y - currentPos.y);
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.clearRect(x, y, w, h);
       ctx.strokeStyle = '#94a3b8';
       ctx.setLineDash([5, 5]);
       ctx.lineWidth = 1.5;
       ctx.strokeRect(x, y, w, h);
+      return;
     }
+
+    // Color theme mapping for the screens
+    const colors: Record<ScreenType, { border: string; bg: string; text: string; label: string }> = {
+      center: { border: '#2563eb', bg: 'rgba(37, 99, 235, 0.1)', text: '#1e40af', label: 'CENTER SCREEN' },
+      left:   { border: '#7c3aed', bg: 'rgba(124, 58, 237, 0.1)', text: '#5b21b6', label: 'LEFT WING' },
+      right:  { border: '#db2777', bg: 'rgba(219, 39, 119, 0.1)', text: '#9d174d', label: 'RIGHT WING' },
+    };
+
+    // Draw configured screens
+    (Object.keys(screens) as ScreenType[]).forEach((type) => {
+      const coordsVal = screens[type];
+      if (coordsVal && naturalSize.w > 0) {
+        const d = getDisplayCoords(coordsVal, canvas);
+        const style = colors[type];
+        const isActive = activeScreen === type;
+
+        // Draw overlay container
+        ctx.strokeStyle = style.border;
+        ctx.lineWidth = isActive ? 3 : 1.5;
+        ctx.setLineDash([]);
+        ctx.strokeRect(d.x, d.y, d.w, d.h);
+
+        ctx.fillStyle = isActive ? style.bg : 'rgba(148, 163, 184, 0.05)';
+        ctx.fillRect(d.x, d.y, d.w, d.h);
+
+        // Badge banner
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = style.border;
+        const textLabel = `${style.label} (${coordsVal.w}x${coordsVal.h}px)`;
+        const textWidth = ctx.measureText(textLabel).width;
+
+        ctx.fillRect(d.x, d.y - 15 >= 0 ? d.y - 15 : d.y, textWidth + 8, 15);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(textLabel, d.x + 4, (d.y - 15 >= 0 ? d.y - 15 : d.y) + 11);
+      }
+    });
   };
 
-  useEffect(() => { drawCanvas(); }, [coords, isDrawing, startPos, currentPos, naturalSize]);
+  useEffect(() => { drawCanvas(); }, [screens, isDrawing, startPos, currentPos, naturalSize, activeScreen]);
 
   const resizeCanvas = () => {
     const canvas = canvasRef.current;
@@ -91,7 +131,7 @@ export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: Ad
   useEffect(() => {
     window.addEventListener('resize', resizeCanvas);
     return () => window.removeEventListener('resize', resizeCanvas);
-  }, [coords, naturalSize]);
+  }, [screens, naturalSize, activeScreen]);
 
   const handleImageLoad = () => {
     const img = imageRef.current;
@@ -111,7 +151,7 @@ export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: Ad
     setIsDrawing(true);
     setStartPos(pos);
     setCurrentPos(pos);
-    setCoords(null);
+    updateScreen(activeScreen, null);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -129,7 +169,6 @@ export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: Ad
     const dispH = Math.abs(startPos.y - currentPos.y);
 
     if (dispW > 8 && dispH > 8 && naturalSize.w > 0) {
-      // Convert display px → natural image px
       const scaleX = naturalSize.w / canvas.width;
       const scaleY = naturalSize.h / canvas.height;
       const pixelCoords: Coords = {
@@ -138,25 +177,41 @@ export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: Ad
         w: Math.round(dispW * scaleX),
         h: Math.round(dispH * scaleY),
       };
-      setCoords(pixelCoords);
-      onSave(pixelCoords);
+      updateScreen(activeScreen, pixelCoords);
     }
     setIsDrawing(false);
   };
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-between items-center text-xs">
-        <span className="text-slate-500 font-bold uppercase tracking-wider flex items-center gap-1.5">
-          <Maximize2 className="w-3.5 h-3.5 text-blue-500" /> Drag to define screen zone
-        </span>
-        {coords && (
+      {/* Target Screen Selector */}
+      <div className="flex flex-wrap gap-2 items-center justify-between border-b border-slate-100 pb-3">
+        <div className="flex gap-1 bg-slate-150 rounded-xl p-1 text-xs">
+          {(['center', 'left', 'right'] as ScreenType[]).map((type) => {
+            const hasCoords = !!screens[type];
+            const colorsMap = { center: 'text-blue-600', left: 'text-violet-600', right: 'text-pink-600' };
+            const activeBgs = { center: 'bg-blue-600 text-white', left: 'bg-violet-600 text-white', right: 'bg-pink-600 text-white' };
+            return (
+              <button
+                key={type}
+                type="button"
+                onClick={() => setActiveScreen(type)}
+                className={`px-3 py-1.5 rounded-lg font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${activeScreen === type ? activeBgs[type] : 'text-slate-500 hover:bg-slate-100'}`}
+              >
+                <span className={`w-2 h-2 rounded-full ${activeScreen === type ? 'bg-white' : hasCoords ? (type === 'center' ? 'bg-blue-500' : type === 'left' ? 'bg-violet-500' : 'bg-pink-500') : 'bg-slate-350'}`} />
+                {type} Screen {hasCoords && '✓'}
+              </button>
+            );
+          })}
+        </div>
+
+        {screens[activeScreen] && (
           <button
             type="button"
-            onClick={() => { setCoords(null); onSave({ x: 0, y: 0, w: 0, h: 0 }); }}
+            onClick={() => updateScreen(activeScreen, null)}
             className="text-[10px] text-red-500 hover:underline flex items-center gap-1 font-bold uppercase tracking-wider"
           >
-            <Trash2 className="w-3 h-3" /> Clear
+            <Trash2 className="w-3.5 h-3.5" /> Clear {activeScreen}
           </button>
         )}
       </div>
@@ -178,20 +233,27 @@ export default function AdminBoundingBox({ imageUrl, initialCoords, onSave }: Ad
         />
       </div>
 
-      {coords ? (
-        <div className="grid grid-cols-4 gap-2 bg-blue-50 border border-blue-100 p-3 rounded-lg text-center text-xs">
-          {[['X', coords.x], ['Y', coords.y], ['Width', coords.w], ['Height', coords.h]].map(([label, val]) => (
-            <div key={label as string}>
-              <span className="text-blue-400 block text-[9px] font-bold uppercase tracking-wider">{label}</span>
-              <span className="font-mono font-semibold text-blue-700">{val}px</span>
+      <div className="grid grid-cols-3 gap-2 bg-slate-50 border border-slate-200/60 p-3 rounded-lg text-[11px]">
+        {(['center', 'left', 'right'] as ScreenType[]).map((type) => {
+          const c = screens[type];
+          return (
+            <div key={type} className={`p-2 rounded-lg border ${activeScreen === type ? 'border-slate-300 bg-white' : 'border-slate-200'}`}>
+              <p className="font-bold text-slate-500 uppercase tracking-wide mb-1 flex items-center justify-between">
+                <span>{type} Screen</span>
+                {!c && <span className="text-[9px] text-slate-400 font-normal">None</span>}
+              </p>
+              {c ? (
+                <div className="font-mono text-slate-600 space-y-0.5">
+                  <p>X: {c.x}px, Y: {c.y}px</p>
+                  <p>Size: {c.w}×{c.h}px</p>
+                </div>
+              ) : (
+                <p className="text-slate-450 italic">Drag to draw</p>
+              )}
             </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-[11px] text-slate-400 italic">
-          Click and drag on the image above to define the white screen bounding box.
-        </p>
-      )}
+          );
+        })}
+      </div>
     </div>
   );
 }
