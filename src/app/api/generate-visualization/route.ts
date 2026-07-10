@@ -175,6 +175,13 @@ export async function POST(request: Request) {
     if (!hall) {
       return NextResponse.json({ error: 'Hall not found' }, { status: 404 });
     }
+    console.log('API RESOLVED HALL MASK COORDS:', {
+      id: hall.id,
+      name: hall.name,
+      center: { x: hall.centerMaskX, y: hall.centerMaskY, w: hall.centerMaskWidth, h: hall.centerMaskHeight },
+      left: { x: hall.leftMaskX, y: hall.leftMaskY, w: hall.leftMaskWidth, h: hall.leftMaskHeight },
+      right: { x: hall.rightMaskX, y: hall.rightMaskY, w: hall.rightMaskWidth, h: hall.rightMaskHeight },
+    });
     if (!hall.baseImageUrl) {
       return NextResponse.json({ error: 'This hall has no base image configured.' }, { status: 422 });
     }
