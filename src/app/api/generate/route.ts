@@ -3,12 +3,14 @@ import { prisma } from '@/lib/db';
 import sharp from 'sharp';
 
 /**
- * Generates the transparent SVG overlay containing styled event text,
- * LED grid textures, glowing borders, and drop shadow halos.
+ * Generates the transparent SVG overlay containing the background image,
+ * styled event text, LED grid textures, glowing borders, and drop shadow halos.
+ * Everything is placed inside the skewed <g> container to ensure correct perspective.
  */
 function createScreenTextOverlaySvg(
   W: number,
   H: number,
+  base64Wallpaper: string,
   title: string,
   subtitle: string,
   dateText: string,
@@ -92,23 +94,26 @@ function createScreenTextOverlaySvg(
       
       <!-- Transform container for realistic perspective skewing -->
       <g transform="skewY(${perspectiveAngle})" transform-origin="center">
-        <!-- Transparent background screen glow base -->
+        <!-- Render the OpenAI-generated background image -->
+        <image href="data:image/png;base64,${base64Wallpaper}" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" x="0" y="0" />
+
+        <!-- Screen Outer Glowing Border backdrop -->
         <rect width="100%" height="100%" fill="none" filter="url(#screenGlow)" />
         
         <!-- Overhead spotlight illumination overlay -->
-        <rect width="100%" height="100%" fill="url(#spotlightGlow_${W}_${H})" rx="6" />
+        <rect width="100%" height="100%" fill="url(#spotlightGlow_${W}_${H})" />
 
         <!-- Realistic high-density LED panel pixel grid pattern -->
         <pattern id="ledGridPattern" width="4" height="4" patternUnits="userSpaceOnUse">
           <circle cx="2" cy="2" r="0.65" fill="${isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)'}" />
         </pattern>
-        <rect width="100%" height="100%" fill="url(#ledGridPattern)" rx="6" />
+        <rect width="100%" height="100%" fill="url(#ledGridPattern)" />
 
         <!-- Matte texture grain layer -->
-        <rect width="100%" height="100%" filter="url(#matteBackdropTexture_${W}_${H})" rx="6" />
+        <rect width="100%" height="100%" filter="url(#matteBackdropTexture_${W}_${H})" />
 
         <!-- Ceiling frame shadow overlay -->
-        <rect width="100%" height="100%" fill="url(#ceilingShadow_${W}_${H})" rx="6" />
+        <rect width="100%" height="100%" fill="url(#ceilingShadow_${W}_${H})" />
 
         <!-- Thin LED screen frame border bezel -->
         <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.3)' : 'rgba(37, 99, 235, 0.2)'}" stroke-width="1.5" />
@@ -354,6 +359,24 @@ It must look like a professional, clean digital canvas design, with NO text, NO 
 
     const composites: any[] = [];
 
+    // If the selected hall is Taj Lands End Ballroom (hallId = 19), let's cover the chrome stanchion stand in the bottom right corner
+    if (hall.id === 19) {
+      try {
+        const carpetPatch = await sharp(baseImageBuffer)
+          .extract({ left: 780, top: 710, width: 120, height: 90 })
+          .blur(2.5)
+          .toBuffer();
+        
+        composites.push({
+          input: carpetPatch,
+          left: 920,
+          top: 670
+        });
+      } catch (err) {
+        console.warn('Failed to patch stanchion base:', err);
+      }
+    }
+
     // Helper to generate composite screen layers on top of the OpenAI background image
     const addScreenComposite = async (
       x: number,
@@ -409,11 +432,13 @@ It must look like a professional, clean digital canvas design, with NO text, NO 
         .resize(clampedW, clampedH, { fit: 'cover' })
         .png()
         .toBuffer();
+      const base64Wallpaper = screenBaseBuffer.toString('base64');
 
-      // 2. Create the transparent text and design decorations SVG overlay
+      // 2. Create the transparent text, background image, and design decorations SVG overlay
       const textOverlaySvg = createScreenTextOverlaySvg(
         clampedW,
         clampedH,
+        base64Wallpaper,
         finalTitle,
         finalSub,
         finalDate,
@@ -424,7 +449,7 @@ It must look like a professional, clean digital canvas design, with NO text, NO 
         skew
       );
 
-      // 3. Composite logos and text overlays on top of the resized OpenAI background
+      // 3. Composite logos and text overlays on top of the skewed SVG structure
       const innerComposites: any[] = [{
         input: textOverlaySvg,
         left: 0,
@@ -462,13 +487,21 @@ It must look like a professional, clean digital canvas design, with NO text, NO 
         });
       }
 
-      const compositedScreenBuffer = await sharp(screenBaseBuffer)
-        .composite(innerComposites)
-        .png()
-        .toBuffer();
+      // Create transparent composite canvas to apply logos
+      const finalScreenOverlay = await sharp({
+        create: {
+          width: clampedW,
+          height: clampedH,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 }
+        }
+      })
+      .composite(innerComposites)
+      .png()
+      .toBuffer();
 
       composites.push({
-        input: compositedScreenBuffer,
+        input: finalScreenOverlay,
         left: clampedX,
         top: clampedY,
       });
