@@ -148,53 +148,75 @@ function createScreenTextOverlaySvg(
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <!-- Screen contact shadow to anchor screen on wall -->
-        <filter id="screenShadow" x="-10%" y="-10%" width="120%" height="120%">
-          <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.25"/>
+        <filter id="screenShadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="8" result="blur" />
+          <feColorMatrix type="matrix" values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.45 0"/>
+        </filter>
+
+        <!-- Ambient LED Bloom Glow on surrounding walls -->
+        <filter id="ambientScreenGlow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="22" result="blur" />
+          <feColorMatrix type="matrix" values="0 0 0 0 0.1   0 0 0 0 0.3   0 0 0 0 0.6  0 0 0 0.28 0"/>
         </filter>
         
         <!-- Ceiling Ambient Shadow mapping physical stage ceilings -->
         <linearGradient id="ceilingShadow_${W}_${H}" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="rgba(0, 0, 0, 0.5)" />
-          <stop offset="18%" stop-color="rgba(0, 0, 0, 0.15)" />
+          <stop offset="0%" stop-color="rgba(0, 0, 0, 0.65)" />
+          <stop offset="25%" stop-color="rgba(0, 0, 0, 0.25)" />
           <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
         </linearGradient>
 
         <!-- Stage Spotlight highlight matching real stage spots -->
-        <radialGradient id="spotlightGlow_${W}_${H}" cx="50%" cy="0%" r="90%">
-          <stop offset="0%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.45)' : 'rgba(255, 255, 255, 0.75)'}" />
-          <stop offset="55%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(255, 255, 255, 0.22)'}" />
+        <radialGradient id="spotlightGlow_${W}_${H}" cx="50%" cy="0%" r="95%">
+          <stop offset="0%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255, 255, 255, 0.55)'}" />
+          <stop offset="60%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(255, 255, 255, 0.15)'}" />
           <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
         </radialGradient>
 
+        <!-- High-fidelity environment reflection simulator -->
+        <linearGradient id="envReflections_${W}_${H}" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="rgba(255, 255, 255, 0.15)" />
+          <stop offset="35%" stop-color="rgba(255, 255, 255, 0.02)" />
+          <stop offset="50%" stop-color="rgba(0, 0, 0, 0.05)" />
+          <stop offset="65%" stop-color="rgba(255, 255, 255, 0.02)" />
+          <stop offset="100%" stop-color="rgba(255, 255, 255, 0.12)" />
+        </linearGradient>
+
         <!-- Anti-reflective matte noise texture for real LED feel -->
         <filter id="matteBackdropTexture_${W}_${H}">
-          <feTurbulence type="fractalNoise" baseFrequency="0.98" numOctaves="4" result="noise" />
-          <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.99" numOctaves="4" result="noise" />
+          <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.09 0" />
           <feComposite operator="in" in2="SourceGraphic" />
         </filter>
 
         <!-- Crop the background image and overlays to match the rounded bezel -->
         <clipPath id="screenClip_${W}_${H}">
-          <rect x="0" y="0" width="${W}" height="${H}" rx="6" />
+          <rect x="0" y="0" width="${W}" height="${H}" rx="8" />
         </clipPath>
       </defs>
       
+      <!-- Outer Ambient Bloom glow (placed behind screen bezel) -->
+      <rect width="100%" height="100%" fill="none" filter="url(#ambientScreenGlow)" />
+
       <!-- Transform container for realistic perspective skewing, clipped to screen boundaries -->
       <g transform="skewY(${perspectiveAngle})" transform-origin="center" clip-path="url(#screenClip_${W}_${H})">
         <!-- Render the OpenAI-generated background image -->
         <image href="data:image/png;base64,${base64Wallpaper}" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" x="0" y="0" />
 
-        <!-- Screen Outer Glowing Border backdrop -->
+        <!-- Screen Outer Glowing Shadow/Bloom backdrop -->
         <rect width="100%" height="100%" fill="none" filter="url(#screenShadow)" />
         
         <!-- Overhead spotlight illumination overlay -->
         <rect width="100%" height="100%" fill="url(#spotlightGlow_${W}_${H})" />
 
         <!-- Realistic high-density LED panel pixel grid pattern -->
-        <pattern id="ledGridPattern" width="4" height="4" patternUnits="userSpaceOnUse">
-          <circle cx="2" cy="2" r="0.65" fill="${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)'}" />
+        <pattern id="ledGridPattern" width="3" height="3" patternUnits="userSpaceOnUse">
+          <circle cx="1.5" cy="1.5" r="0.5" fill="${isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(0, 0, 0, 0.04)'}" />
         </pattern>
         <rect width="100%" height="100%" fill="url(#ledGridPattern)" />
+
+        <!-- Environmental light reflection glare mapping -->
+        <rect width="100%" height="100%" fill="url(#envReflections_${W}_${H})" style="mix-blend-mode: overlay; pointer-events: none;" />
 
         <!-- Matte texture grain layer -->
         <rect width="100%" height="100%" filter="url(#matteBackdropTexture_${W}_${H})" />
@@ -203,10 +225,10 @@ function createScreenTextOverlaySvg(
         <rect width="100%" height="100%" fill="url(#ceilingShadow_${W}_${H})" />
 
         <!-- Outer physical metal cabinet frame border (black bezel) -->
-        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? '#0f172a' : '#1c1917'}" stroke-width="2" opacity="0.95" />
+        <rect x="1" y="1" width="${W - 2}" height="${H - 2}" rx="7" fill="none" stroke="${isDark ? '#020617' : '#1e1b4b'}" stroke-width="3" opacity="0.98" />
         
         <!-- Inner LED bezel glowing border line -->
-        <rect x="1.5" y="1.5" width="${W - 3}" height="${H - 3}" rx="4.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(37, 99, 235, 0.18)'}" stroke-width="1" />
+        <rect x="2.5" y="2.5" width="${W - 5}" height="${H - 5}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.35)' : 'rgba(37, 99, 235, 0.22)'}" stroke-width="1.2" />
         
         <!-- Render Logo Row (Custom or Preset) -->
         ${logoRowSvg}
@@ -220,7 +242,7 @@ function createScreenTextOverlaySvg(
         ${titleTextBlock}
 
         <!-- Accent Line divider -->
-        <line x1="${(W - lineW) / 2}" y1="${lineY}" x2="${(W + lineW) / 2}" y2="${lineY}" stroke="${isDark ? 'rgba(56, 189, 248, 0.35)' : 'rgba(37, 99, 235, 0.25)'}" stroke-width="1.5" />
+        <line x1="${(W - lineW) / 2}" y1="${lineY}" x2="${(W + lineW) / 2}" y2="${lineY}" stroke="${isDark ? 'rgba(56, 189, 248, 0.45)' : 'rgba(37, 99, 235, 0.3)'}" stroke-width="1.8" />
 
         <!-- Date and Venue details footer -->
         ${cleanDate || cleanVenue ? `
@@ -231,7 +253,7 @@ function createScreenTextOverlaySvg(
 
         <!-- Organizer Footer text -->
         ${cleanFooter ? `
-          <text x="50%" y="${H - 12}" font-family="system-ui, sans-serif" font-size="${Math.max(7, dateSize * 0.75)}px" font-weight="500" fill="${subTextColor}" opacity="0.6" text-anchor="middle" letter-spacing="0.05em">${cleanFooter}</text>
+          <text x="50%" y="${H - 12}" font-family="system-ui, sans-serif" font-size="${Math.max(7, dateSize * 0.75)}px" font-weight="500" fill="${subTextColor}" opacity="0.65" text-anchor="middle" letter-spacing="0.05em">${cleanFooter}</text>
         ` : ''}
       </g>
     </svg>
