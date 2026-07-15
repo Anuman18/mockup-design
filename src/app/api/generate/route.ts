@@ -91,10 +91,15 @@ function createScreenTextOverlaySvg(
           <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" />
           <feComposite operator="in" in2="SourceGraphic" />
         </filter>
+
+        <!-- Crop the background image and overlays to match the rounded bezel -->
+        <clipPath id="screenClip_${W}_${H}">
+          <rect x="0" y="0" width="${W}" height="${H}" rx="6" />
+        </clipPath>
       </defs>
       
-      <!-- Transform container for realistic perspective skewing -->
-      <g transform="skewY(${perspectiveAngle})" transform-origin="center">
+      <!-- Transform container for realistic perspective skewing, clipped to screen boundaries -->
+      <g transform="skewY(${perspectiveAngle})" transform-origin="center" clip-path="url(#screenClip_${W}_${H})">
         <!-- Render the OpenAI-generated background image -->
         <image href="data:image/png;base64,${base64Wallpaper}" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" x="0" y="0" />
 
@@ -116,8 +121,11 @@ function createScreenTextOverlaySvg(
         <!-- Ceiling frame shadow overlay -->
         <rect width="100%" height="100%" fill="url(#ceilingShadow_${W}_${H})" />
 
-        <!-- Thin LED screen frame border bezel -->
-        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.35)' : 'rgba(37, 99, 235, 0.25)'}" stroke-width="1.5" />
+        <!-- Outer physical metal cabinet frame border (black bezel) -->
+        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? '#0f172a' : '#1c1917'}" stroke-width="2" opacity="0.95" />
+        
+        <!-- Inner LED bezel glowing border line -->
+        <rect x="1.5" y="1.5" width="${W - 3}" height="${H - 3}" rx="4.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(37, 99, 235, 0.18)'}" stroke-width="1" />
         
         <!-- Subtitle -->
         ${cleanSub ? `
@@ -193,7 +201,13 @@ function createPresetLogosSvg(
 
   const svg = `
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-      <g transform="skewY(${perspectiveAngle})" transform-origin="center">
+      <defs>
+        <!-- Crop the preset logos to match the rounded bezel -->
+        <clipPath id="logosClip_${W}_${H}">
+          <rect x="0" y="0" width="${W}" height="${H}" rx="6" />
+        </clipPath>
+      </defs>
+      <g transform="skewY(${perspectiveAngle})" transform-origin="center" clip-path="url(#logosClip_${W}_${H})">
         ${logoElements}
       </g>
     </svg>
@@ -274,16 +288,82 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Formulate an ultra-premium universal prompt for the digital corporate stage backdrop design
+    // Formulate a beautiful prompt for the digital corporate screen wallpaper design
     const colorsStr = screenTheme === 'dark'
       ? 'deep navy blue, dark slate gray, futuristic glowing teal curves, and rich blue gradients'
       : 'soft warm off-white, light gray gradients, metallic clean silver curves, and subtle sky blue accents';
 
-    const prompt = `A professional, ultra-premium corporate event main stage LED screen backdrop wallpaper design.
-Aesthetic: Modern, high-technology, prestigious corporate summit keynote. Sophisticated abstract digital artwork featuring elegant glowing curves, soft neon light paths, flowing luxury corporate gradients, and clean geometric structures.
-Colors: ${colorsStr}.
-The visual must feel extremely premium, luxurious, and clean, like a design for a global tech conference or luxury brand keynote.
-IMPORTANT: The output must be a flat 2D wallpaper graphic image. It must contain NO physical objects, NO stage structures, NO furniture, NO podiums, NO speakers, NO people, NO text, and NO logos. Just the clean abstract digital backdrop graphic itself.`;
+    const prompt = `Create an ultra-premium, photorealistic-quality 2D corporate event LED screen backdrop wallpaper for a world-class business conference.
+
+Design Style:
+A sophisticated, modern, luxury corporate keynote aesthetic inspired by Apple, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX, and AWS re:Invent stage visuals.
+
+Visual Language:
+- Elegant flowing abstract wave compositions
+- Premium futuristic digital curves
+- Soft volumetric light gradients
+- Glassmorphism-inspired lighting
+- Luxury ambient glow
+- Minimal geometric structures
+- Smooth layered depth using only graphic elements
+- Dynamic flowing ribbons
+- Subtle technology-inspired patterns
+- High-end digital motion-inspired composition
+- Clean negative space for stage presentation
+- Perfect visual balance and symmetry
+
+Color Palette:
+${colorsStr}
+
+Lighting:
+- Soft cinematic lighting
+- Premium LED glow
+- Smooth gradient transitions
+- Elegant bloom effects
+- Refined highlights
+- Luxurious depth without becoming busy
+- No harsh contrast
+- Rich premium color blending
+
+Composition:
+- Designed specifically for large-format LED walls
+- Ultra-clean center composition
+- Important visual elements remain inside safe margins
+- Balanced left and right sections
+- Natural eye flow across the wallpaper
+- No visual clutter
+- Suitable for keynote presentations
+
+Image Quality:
+- Ultra high resolution
+- 8K quality
+- Razor-sharp details
+- Professional commercial artwork
+- Clean vector-like finish
+- No compression artifacts
+- Production-ready for large LED displays
+
+Strict Requirements:
+- Flat 2D digital wallpaper only.
+- Do NOT generate any stage, auditorium, room, furniture, podium, microphones, truss, curtains, audience, ceiling, walls, lighting rigs, screens, projectors, people, cameras, or physical environment.
+- Do NOT generate mockups.
+- Do NOT generate perspective views.
+- Do NOT generate a poster.
+- Do NOT generate a billboard.
+- Do NOT generate frames.
+- Do NOT generate borders.
+- Do NOT generate shadows from physical objects.
+- Do NOT generate text.
+- Do NOT generate logos.
+- Do NOT generate branding.
+- Do NOT generate icons.
+- Do NOT generate UI elements.
+- Do NOT generate watermarks.
+- Do NOT generate any recognizable objects.
+
+The entire image should be a seamless edge-to-edge abstract LED backdrop that fills the complete canvas with premium corporate graphics.
+
+The result should look like it was created by an elite creative agency for a Fortune 500 global technology summit, with an extremely polished, luxurious, futuristic, and visually immersive aesthetic.`;
 
     const startTime = Date.now();
 
