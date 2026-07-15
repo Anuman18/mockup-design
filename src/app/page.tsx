@@ -336,7 +336,7 @@ export default function HomePage() {
         })
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'OpenAI DALL-E 3 simulation generation failed');
+      if (!res.ok || !data.success) throw new Error(data.error || 'OpenAI GPT Image simulation generation failed');
       setSimulationImage(data.image_url);
     } catch (e: any) {
       setGenError(e.message || 'Unknown error occurred during simulation');
@@ -822,9 +822,9 @@ export default function HomePage() {
                 <>
                   {!simulationImage && !generating && (
                     <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">OpenAI DALL-E 3 Simulation parameters</p>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">OpenAI GPT Image Simulation parameters</p>
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div><span className="text-slate-400 text-xs block">Engine</span><b className="text-slate-800">DALL-E 3 (GPT Image Model)</b></div>
+                        <div><span className="text-slate-400 text-xs block">Engine</span><b className="text-slate-800">OpenAI GPT Image Model</b></div>
                         <div><span className="text-slate-400 text-xs block">UI Blending</span><b className="text-slate-800">Seamless Isolated #FFFFFF</b></div>
                         <div><span className="text-slate-400 text-xs block">Stage finish</span><b className="text-slate-800">{selStage?.name}</b></div>
                         <div><span className="text-slate-400 text-xs block">Seating setup</span><b className="text-slate-800">{selSeating?.name}</b></div>
@@ -841,7 +841,7 @@ export default function HomePage() {
                         <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
                         <Sparkles className="absolute inset-0 m-auto w-7 h-7 text-blue-600 animate-pulse" />
                       </div>
-                      <p className="text-slate-600 font-semibold">Simulating 3D architectural setup using DALL-E 3…</p>
+                      <p className="text-slate-600 font-semibold">Simulating 3D architectural setup using OpenAI GPT Image model…</p>
                       <p className="text-slate-400 text-sm">Synthesizing isolated rendering on pure white background.</p>
                     </div>
                   )}
