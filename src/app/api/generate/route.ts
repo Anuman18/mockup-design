@@ -274,14 +274,16 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Formulate a beautiful prompt for the digital corporate screen wallpaper design
+    // Formulate an ultra-premium universal prompt for the digital corporate stage backdrop design
     const colorsStr = screenTheme === 'dark'
       ? 'deep navy blue, dark slate gray, futuristic glowing teal curves, and rich blue gradients'
       : 'soft warm off-white, light gray gradients, metallic clean silver curves, and subtle sky blue accents';
 
-    const prompt = `A premium, high-resolution abstract corporate presentation slide background wallpaper.
-The design must be modern, clean, and minimalist, featuring elegant glowing digital waves, smooth gradient transitions, and professional high-tech corporate branding aesthetics in colors: ${colorsStr}.
-It must look like a professional, clean digital canvas design, with NO text, NO logos, NO physical stage structures, NO furniture, NO podiums, and NO outer frames. Just the clean abstract digital wallpaper design.`;
+    const prompt = `A professional, ultra-premium corporate event main stage LED screen backdrop wallpaper design.
+Aesthetic: Modern, high-technology, prestigious corporate summit keynote. Sophisticated abstract digital artwork featuring elegant glowing curves, soft neon light paths, flowing luxury corporate gradients, and clean geometric structures.
+Colors: ${colorsStr}.
+The visual must feel extremely premium, luxurious, and clean, like a design for a global tech conference or luxury brand keynote.
+IMPORTANT: The output must be a flat 2D wallpaper graphic image. It must contain NO physical objects, NO stage structures, NO furniture, NO podiums, NO speakers, NO people, NO text, and NO logos. Just the clean abstract digital backdrop graphic itself.`;
 
     const startTime = Date.now();
 
