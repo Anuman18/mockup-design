@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
+import sharp from 'sharp';
 
 // Helper to save uploaded files safely
 async function saveUploadFile(file: File | null, subfolder: string): Promise<string | null> {
@@ -39,18 +40,18 @@ export async function POST(request: Request) {
     const width            = formData.get('width') as string;
     const height           = formData.get('height') as string;
     const capacity         = formData.get('capacity') as string;
-    const centerMaskX      = formData.get('centerMaskX') as string;
-    const centerMaskY      = formData.get('centerMaskY') as string;
-    const centerMaskWidth  = formData.get('centerMaskWidth') as string;
-    const centerMaskHeight = formData.get('centerMaskHeight') as string;
-    const leftMaskX        = formData.get('leftMaskX') as string;
-    const leftMaskY        = formData.get('leftMaskY') as string;
-    const leftMaskWidth    = formData.get('leftMaskWidth') as string;
-    const leftMaskHeight   = formData.get('leftMaskHeight') as string;
-    const rightMaskX       = formData.get('rightMaskX') as string;
-    const rightMaskY       = formData.get('rightMaskY') as string;
-    const rightMaskWidth   = formData.get('rightMaskWidth') as string;
-    const rightMaskHeight  = formData.get('rightMaskHeight') as string;
+    let centerMaskX        = parseInt(formData.get('centerMaskX') as string) || 0;
+    let centerMaskY        = parseInt(formData.get('centerMaskY') as string) || 0;
+    let centerMaskWidth    = parseInt(formData.get('centerMaskWidth') as string) || 0;
+    let centerMaskHeight   = parseInt(formData.get('centerMaskHeight') as string) || 0;
+    let leftMaskX          = parseInt(formData.get('leftMaskX') as string) || 0;
+    let leftMaskY          = parseInt(formData.get('leftMaskY') as string) || 0;
+    let leftMaskWidth      = parseInt(formData.get('leftMaskWidth') as string) || 0;
+    let leftMaskHeight     = parseInt(formData.get('leftMaskHeight') as string) || 0;
+    let rightMaskX         = parseInt(formData.get('rightMaskX') as string) || 0;
+    let rightMaskY         = parseInt(formData.get('rightMaskY') as string) || 0;
+    let rightMaskWidth     = parseInt(formData.get('rightMaskWidth') as string) || 0;
+    let rightMaskHeight    = parseInt(formData.get('rightMaskHeight') as string) || 0;
     
     // File parameters
     const baseImage        = formData.get('baseImage') as File | null;
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
     const uploadedPhoto2 = await saveUploadFile(refPhoto2, 'gallery');
     if (uploadedPhoto2) refPhotoUrl2 = uploadedPhoto2;
 
+    // Create intermediate record
     const hall = await prisma.venueHall.create({
       data: {
         venueId:          parseInt(venueId, 10),
@@ -92,22 +94,61 @@ export async function POST(request: Request) {
         floorPlanUrl,
         refPhotoUrl1,
         refPhotoUrl2,
-        centerMaskX:      parseInt(centerMaskX) || 0,
-        centerMaskY:      parseInt(centerMaskY) || 0,
-        centerMaskWidth:  parseInt(centerMaskWidth) || 0,
-        centerMaskHeight: parseInt(centerMaskHeight) || 0,
-        leftMaskX:        parseInt(leftMaskX) || 0,
-        leftMaskY:        parseInt(leftMaskY) || 0,
-        leftMaskWidth:    parseInt(leftMaskWidth) || 0,
-        leftMaskHeight:   parseInt(leftMaskHeight) || 0,
-        rightMaskX:       parseInt(rightMaskX) || 0,
-        rightMaskY:       parseInt(rightMaskY) || 0,
-        rightMaskWidth:   parseInt(rightMaskWidth) || 0,
-        rightMaskHeight:  parseInt(rightMaskHeight) || 0,
+        centerMaskX,
+        centerMaskY,
+        centerMaskWidth,
+        centerMaskHeight,
+        leftMaskX,
+        leftMaskY,
+        leftMaskWidth,
+        leftMaskHeight,
+        rightMaskX,
+        rightMaskY,
+        rightMaskWidth,
+        rightMaskHeight,
       },
     });
 
-    return NextResponse.json(hall, { status: 201 });
+    // Run dynamic stage analysis on uploaded hall photo
+    if (baseImageUrl) {
+      try {
+        const { analyzeStageLayout, saveStageTemplateJson } = await import('@/lib/stage-analyzer');
+        const fs = await import('fs/promises');
+        const imagePath = path.join(process.cwd(), 'public', baseImageUrl);
+        const imageBuffer = await fs.readFile(imagePath);
+        const metadata = await sharp(imageBuffer).metadata();
+        const W = metadata.width || 1200;
+        const H = metadata.height || 800;
+
+        const analysis = await analyzeStageLayout(imageBuffer, W, H);
+        await saveStageTemplateJson(hall.id, analysis);
+
+        // Update the hall record with AI-detected coordinates
+        await prisma.venueHall.update({
+          where: { id: hall.id },
+          data: {
+            centerMaskX:      analysis.main_screen.bbox.x,
+            centerMaskY:      analysis.main_screen.bbox.y,
+            centerMaskWidth:  analysis.main_screen.bbox.width,
+            centerMaskHeight: analysis.main_screen.bbox.height,
+            leftMaskX:        analysis.left_screen?.bbox.x ?? 0,
+            leftMaskY:        analysis.left_screen?.bbox.y ?? 0,
+            leftMaskWidth:    analysis.left_screen?.bbox.width ?? 0,
+            leftMaskHeight:   analysis.left_screen?.bbox.height ?? 0,
+            rightMaskX:       analysis.right_screen?.bbox.x ?? 0,
+            rightMaskY:       analysis.right_screen?.bbox.y ?? 0,
+            rightMaskWidth:   analysis.right_screen?.bbox.width ?? 0,
+            rightMaskHeight:  analysis.right_screen?.bbox.height ?? 0,
+          }
+        });
+      } catch (analyzeErr) {
+        console.error('Error analyzing stage coordinates during POST:', analyzeErr);
+      }
+    }
+
+    // Load final updated record
+    const finalHall = await prisma.venueHall.findUnique({ where: { id: hall.id } });
+    return NextResponse.json(finalHall, { status: 201 });
   } catch (error) {
     console.error('POST /api/admin/halls error:', error);
     return NextResponse.json({ error: 'Failed to create hall' }, { status: 500 });
@@ -119,18 +160,18 @@ export async function PUT(request: Request) {
   try {
     const formData = await request.formData();
     const id               = formData.get('id') as string;
-    const centerMaskX      = formData.get('centerMaskX') as string;
-    const centerMaskY      = formData.get('centerMaskY') as string;
-    const centerMaskWidth  = formData.get('centerMaskWidth') as string;
-    const centerMaskHeight = formData.get('centerMaskHeight') as string;
-    const leftMaskX        = formData.get('leftMaskX') as string;
-    const leftMaskY        = formData.get('leftMaskY') as string;
-    const leftMaskWidth    = formData.get('leftMaskWidth') as string;
-    const leftMaskHeight   = formData.get('leftMaskHeight') as string;
-    const rightMaskX       = formData.get('rightMaskX') as string;
-    const rightMaskY       = formData.get('rightMaskY') as string;
-    const rightMaskWidth   = formData.get('rightMaskWidth') as string;
-    const rightMaskHeight  = formData.get('rightMaskHeight') as string;
+    let centerMaskX        = parseInt(formData.get('centerMaskX') as string) || 0;
+    let centerMaskY        = parseInt(formData.get('centerMaskY') as string) || 0;
+    let centerMaskWidth    = parseInt(formData.get('centerMaskWidth') as string) || 0;
+    let centerMaskHeight   = parseInt(formData.get('centerMaskHeight') as string) || 0;
+    let leftMaskX          = parseInt(formData.get('leftMaskX') as string) || 0;
+    let leftMaskY          = parseInt(formData.get('leftMaskY') as string) || 0;
+    let leftMaskWidth      = parseInt(formData.get('leftMaskWidth') as string) || 0;
+    let leftMaskHeight     = parseInt(formData.get('leftMaskHeight') as string) || 0;
+    let rightMaskX         = parseInt(formData.get('rightMaskX') as string) || 0;
+    let rightMaskY         = parseInt(formData.get('rightMaskY') as string) || 0;
+    let rightMaskWidth     = parseInt(formData.get('rightMaskWidth') as string) || 0;
+    let rightMaskHeight    = parseInt(formData.get('rightMaskHeight') as string) || 0;
 
     const baseImage        = formData.get('baseImage') as File | null;
     const floorPlan        = formData.get('floorPlan') as File | null;
@@ -157,23 +198,54 @@ export async function PUT(request: Request) {
     if (uploadedPhoto2) refPhotoUrl2 = uploadedPhoto2;
 
     const updateData: Record<string, unknown> = {
-      centerMaskX:      parseInt(centerMaskX) || 0,
-      centerMaskY:      parseInt(centerMaskY) || 0,
-      centerMaskWidth:  parseInt(centerMaskWidth) || 0,
-      centerMaskHeight: parseInt(centerMaskHeight) || 0,
-      leftMaskX:        parseInt(leftMaskX) || 0,
-      leftMaskY:        parseInt(leftMaskY) || 0,
-      leftMaskWidth:    parseInt(leftMaskWidth) || 0,
-      leftMaskHeight:   parseInt(leftMaskHeight) || 0,
-      rightMaskX:       parseInt(rightMaskX) || 0,
-      rightMaskY:       parseInt(rightMaskY) || 0,
-      rightMaskWidth:   parseInt(rightMaskWidth) || 0,
-      rightMaskHeight:  parseInt(rightMaskHeight) || 0,
+      centerMaskX,
+      centerMaskY,
+      centerMaskWidth,
+      centerMaskHeight,
+      leftMaskX,
+      leftMaskY,
+      leftMaskWidth,
+      leftMaskHeight,
+      rightMaskX,
+      rightMaskY,
+      rightMaskWidth,
+      rightMaskHeight,
     };
     if (baseImageUrl) updateData.baseImageUrl = baseImageUrl;
     if (floorPlanUrl) updateData.floorPlanUrl = floorPlanUrl;
     if (refPhotoUrl1) updateData.refPhotoUrl1 = refPhotoUrl1;
     if (refPhotoUrl2) updateData.refPhotoUrl2 = refPhotoUrl2;
+
+    if (baseImageUrl) {
+      try {
+        const { analyzeStageLayout, saveStageTemplateJson } = await import('@/lib/stage-analyzer');
+        const fs = await import('fs/promises');
+        const imagePath = path.join(process.cwd(), 'public', baseImageUrl);
+        const imageBuffer = await fs.readFile(imagePath);
+        const metadata = await sharp(imageBuffer).metadata();
+        const W = metadata.width || 1200;
+        const H = metadata.height || 800;
+
+        const analysis = await analyzeStageLayout(imageBuffer, W, H);
+        await saveStageTemplateJson(parseInt(id, 10), analysis);
+
+        // Update with AI-detected coordinates
+        updateData.centerMaskX      = analysis.main_screen.bbox.x;
+        updateData.centerMaskY      = analysis.main_screen.bbox.y;
+        updateData.centerMaskWidth  = analysis.main_screen.bbox.width;
+        updateData.centerMaskHeight = analysis.main_screen.bbox.height;
+        updateData.leftMaskX        = analysis.left_screen?.bbox.x ?? 0;
+        updateData.leftMaskY        = analysis.left_screen?.bbox.y ?? 0;
+        updateData.leftMaskWidth    = analysis.left_screen?.bbox.width ?? 0;
+        updateData.leftMaskHeight   = analysis.left_screen?.bbox.height ?? 0;
+        updateData.rightMaskX       = analysis.right_screen?.bbox.x ?? 0;
+        updateData.rightMaskY       = analysis.right_screen?.bbox.y ?? 0;
+        updateData.rightMaskWidth   = analysis.right_screen?.bbox.width ?? 0;
+        updateData.rightMaskHeight  = analysis.right_screen?.bbox.height ?? 0;
+      } catch (analyzeErr) {
+        console.error('Error analyzing stage coordinates during PUT:', analyzeErr);
+      }
+    }
 
     const hall = await prisma.venueHall.update({
       where: { id: parseInt(id, 10) },

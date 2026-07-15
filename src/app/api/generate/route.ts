@@ -1,6 +1,29 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import sharp from 'sharp';
+import { loadStageTemplateJson, analyzeStageLayout, saveStageTemplateJson } from '@/lib/stage-analyzer';
+
+/**
+ * Trims transparent border padding from logo buffer, resizes, and base64 encodes it.
+ */
+async function processCustomLogo(logoBuf: Buffer, maxW: number, maxH: number): Promise<string | null> {
+  try {
+    const trimmed = await sharp(logoBuf)
+      .trim()
+      .resize({
+        width: Math.round(maxW),
+        height: Math.round(maxH),
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
+      })
+      .png()
+      .toBuffer();
+    return trimmed.toString('base64');
+  } catch (err) {
+    console.error('Failed to process custom logo:', err);
+    return null;
+  }
+}
 
 /**
  * Generates the transparent SVG overlay containing the background image,
@@ -17,7 +40,8 @@ function createScreenTextOverlaySvg(
   venueText: string,
   footerText: string,
   theme: 'light' | 'dark',
-  hasLogos: boolean,
+  base64Logos: string[],
+  presetLogos: string[],
   perspectiveAngle: number
 ): Buffer {
   const isDark = theme === 'dark';
@@ -31,12 +55,21 @@ function createScreenTextOverlaySvg(
   const subTextColor = isDark ? '#94a3b8' : '#475569';
   const accentColor = isDark ? '#38bdf8' : '#1d4ed8';
 
-  const titleSize = Math.min(W * 0.052, H * 0.13, 38);
+  // Dynamic Title Sizing to prevent overflow
+  let titleSize = Math.min(W * 0.052, H * 0.13, 38);
+  const maxCharCount = 24;
+  if (cleanTitle.length > maxCharCount) {
+    const scaleFactor = maxCharCount / cleanTitle.length;
+    titleSize = Math.max(12, titleSize * scaleFactor);
+  }
+
   const subSize = Math.max(9, titleSize * 0.45);
   const dateSize = Math.max(8, titleSize * 0.4);
 
+  const hasLogos = base64Logos.length > 0 || presetLogos.length > 0;
+
   let titleTextBlock = '';
-  if (cleanTitle.length > 22) {
+  if (cleanTitle.length > 18) {
     const mid = Math.floor(cleanTitle.length / 2);
     let splitIdx = cleanTitle.indexOf(' ', mid);
     if (splitIdx === -1) splitIdx = cleanTitle.lastIndexOf(' ', mid);
@@ -44,7 +77,7 @@ function createScreenTextOverlaySvg(
 
     const line1 = cleanTitle.substring(0, splitIdx).trim();
     const line2 = cleanTitle.substring(splitIdx).trim();
-    const startY = hasLogos ? (H * 0.52) : (H * 0.44);
+    const startY = hasLogos ? (H * 0.50) : (H * 0.42);
 
     titleTextBlock = `
       <text x="50%" y="${startY}" font-family="system-ui, -apple-system, sans-serif" font-size="${titleSize}px" font-weight="800" fill="${textColor}" text-anchor="middle" letter-spacing="-0.02em">
@@ -53,7 +86,7 @@ function createScreenTextOverlaySvg(
       </text>
     `;
   } else {
-    const startY = hasLogos ? (H * 0.58) : (H * 0.48);
+    const startY = hasLogos ? (H * 0.56) : (H * 0.46);
     titleTextBlock = `
       <text x="50%" y="${startY}" font-family="system-ui, -apple-system, sans-serif" font-size="${titleSize}px" font-weight="900" fill="${textColor}" text-anchor="middle" letter-spacing="-0.025em">${cleanTitle}</text>
     `;
@@ -61,6 +94,55 @@ function createScreenTextOverlaySvg(
 
   const lineW = Math.min(W * 0.4, 200);
   const lineY = H * 0.76;
+
+  // Build the Header Logo row directly inside the SVG
+  let logoRowSvg = '';
+  if (base64Logos.length > 0) {
+    const total = base64Logos.length;
+    const logoW = Math.round(Math.min(W * 0.16, 120));
+    const logoH = Math.round(Math.min(H * 0.12, 34));
+    const gap = Math.round(Math.min(15, W * 0.02));
+    const rowW = total * logoW + (total - 1) * gap;
+    const startX = (W - rowW) / 2;
+    const ly = 14;
+
+    logoRowSvg = base64Logos.map((b64, i) => {
+      const lx = startX + i * (logoW + gap);
+      return `<image href="data:image/png;base64,${b64}" x="${lx}" y="${ly}" width="${logoW}" height="${logoH}" />`;
+    }).join('\n');
+  } else if (presetLogos.length > 0) {
+    const N = presetLogos.length;
+    const badgeBg = isDark ? 'rgba(30, 41, 59, 0.75)' : 'rgba(255, 255, 255, 0.9)';
+    const badgeBorder = isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(37, 99, 235, 0.15)';
+    const badgeTextColor = isDark ? '#e2e8f0' : '#1e293b';
+
+    let badgeW = Math.min(W * 0.18, 120);
+    let badgeH = Math.min(H * 0.12, 34);
+    let gap = Math.min(15, W * 0.025);
+
+    const marginX = 20;
+    const availableW = W - marginX * 2;
+    const totalNeededW = N * badgeW + (N - 1) * gap;
+
+    if (totalNeededW > availableW) {
+      const scale = availableW / totalNeededW;
+      badgeW = badgeW * scale;
+      gap = gap * scale;
+      badgeH = badgeH * scale;
+    }
+
+    const rowW = N * badgeW + (N - 1) * gap;
+    const startX = (W - rowW) / 2;
+    const ly = 14;
+
+    logoRowSvg = presetLogos.map((logo, i) => {
+      const lx = startX + i * (badgeW + gap);
+      return `
+        <rect x="${lx}" y="${ly}" width="${badgeW}" height="${badgeH}" rx="6" fill="${badgeBg}" stroke="${badgeBorder}" stroke-width="1"/>
+        <text x="${lx + badgeW / 2}" y="${ly + badgeH / 2 + 4}" font-family="system-ui, sans-serif" font-size="${Math.max(7, badgeH * 0.35)}px" font-weight="700" fill="${badgeTextColor}" text-anchor="middle" letter-spacing="-0.01em">${logo}</text>
+      `;
+    }).join('\n');
+  }
 
   const svg = `
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
@@ -84,7 +166,7 @@ function createScreenTextOverlaySvg(
           <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
         </radialGradient>
 
-        <!-- Anti-reflective matte noise texture for real LED panel feel -->
+        <!-- Anti-reflective matte noise texture for real LED feel -->
         <filter id="matteBackdropTexture_${W}_${H}">
           <feTurbulence type="fractalNoise" baseFrequency="0.98" numOctaves="4" result="noise" />
           <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" />
@@ -126,6 +208,9 @@ function createScreenTextOverlaySvg(
         <!-- Inner LED bezel glowing border line -->
         <rect x="1.5" y="1.5" width="${W - 3}" height="${H - 3}" rx="4.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.25)' : 'rgba(37, 99, 235, 0.18)'}" stroke-width="1" />
         
+        <!-- Render Logo Row (Custom or Preset) -->
+        ${logoRowSvg}
+
         <!-- Subtitle -->
         ${cleanSub ? `
           <text x="50%" y="${H * 0.28}" font-family="system-ui, sans-serif" font-size="${subSize}px" font-weight="600" fill="${accentColor}" text-anchor="middle" letter-spacing="0.08em" text-transform="uppercase">${cleanSub}</text>
@@ -152,65 +237,6 @@ function createScreenTextOverlaySvg(
     </svg>
   `;
 
-  return Buffer.from(svg);
-}
-
-/**
- * Renders multiple preset text logo badges inline as styled glass cards.
- */
-function createPresetLogosSvg(
-  W: number,
-  H: number,
-  logos: string[],
-  theme: 'light' | 'dark',
-  perspectiveAngle: number
-): Buffer {
-  const N = logos.length;
-  const isDark = theme === 'dark';
-  const badgeBg = isDark ? 'rgba(30, 41, 59, 0.75)' : 'rgba(255, 255, 255, 0.9)';
-  const badgeBorder = isDark ? 'rgba(56, 189, 248, 0.2)' : 'rgba(37, 99, 235, 0.15)';
-  const badgeTextColor = isDark ? '#e2e8f0' : '#1e293b';
-
-  let badgeW = Math.min(W * 0.18, 120);
-  let badgeH = Math.min(H * 0.12, 34);
-  let gap = Math.min(15, W * 0.025);
-
-  const marginX = 20;
-  const availableW = W - marginX * 2;
-  const totalNeededW = N * badgeW + (N - 1) * gap;
-
-  if (totalNeededW > availableW) {
-    const scale = availableW / totalNeededW;
-    badgeW = badgeW * scale;
-    gap = gap * scale;
-    badgeH = badgeH * scale;
-  }
-
-  const rowW = N * badgeW + (N - 1) * gap;
-  const startX = (W - rowW) / 2;
-  const ly = 14;
-
-  const logoElements = logos.map((logo, i) => {
-    const lx = startX + i * (badgeW + gap);
-    return `
-      <rect x="${lx}" y="${ly}" width="${badgeW}" height="${badgeH}" rx="6" fill="${badgeBg}" stroke="${badgeBorder}" stroke-width="1"/>
-      <text x="${lx + badgeW / 2}" y="${ly + badgeH / 2 + 4}" font-family="system-ui, sans-serif" font-size="${Math.max(7, badgeH * 0.35)}px" font-weight="700" fill="${badgeTextColor}" text-anchor="middle" letter-spacing="-0.01em">${logo}</text>
-    `;
-  }).join('\n');
-
-  const svg = `
-    <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <!-- Crop the preset logos to match the rounded bezel -->
-        <clipPath id="logosClip_${W}_${H}">
-          <rect x="0" y="0" width="${W}" height="${H}" rx="6" />
-        </clipPath>
-      </defs>
-      <g transform="skewY(${perspectiveAngle})" transform-origin="center" clip-path="url(#logosClip_${W}_${H})">
-        ${logoElements}
-      </g>
-    </svg>
-  `;
   return Buffer.from(svg);
 }
 
@@ -278,6 +304,36 @@ export async function POST(request: Request) {
     const baseW = baseMetadata.width ?? 1200;
     const baseH = baseMetadata.height ?? 800;
 
+    // Load or dynamically generate Stage Template JSON
+    let analysis = await loadStageTemplateJson(hall.id, baseW, baseH);
+    if (!analysis || !analysis.main_screen) {
+      try {
+        console.log(`No stage template found for hall ${hall.id}. Performing Stage Layout Analysis dynamically...`);
+        analysis = await analyzeStageLayout(baseImageBuffer, baseW, baseH);
+        await saveStageTemplateJson(hall.id, analysis);
+        // Sync detected bounding box back to database coordinates
+        await prisma.venueHall.update({
+          where: { id: hall.id },
+          data: {
+            centerMaskX:      analysis.main_screen.bbox.x,
+            centerMaskY:      analysis.main_screen.bbox.y,
+            centerMaskWidth:  analysis.main_screen.bbox.width,
+            centerMaskHeight: analysis.main_screen.bbox.height,
+            leftMaskX:        analysis.left_screen?.bbox.x ?? 0,
+            leftMaskY:        analysis.left_screen?.bbox.y ?? 0,
+            leftMaskWidth:    analysis.left_screen?.bbox.width ?? 0,
+            leftMaskHeight:   analysis.left_screen?.bbox.height ?? 0,
+            rightMaskX:       analysis.right_screen?.bbox.x ?? 0,
+            rightMaskY:       analysis.right_screen?.bbox.y ?? 0,
+            rightMaskWidth:   analysis.right_screen?.bbox.width ?? 0,
+            rightMaskHeight:  analysis.right_screen?.bbox.height ?? 0,
+          }
+        });
+      } catch (analyzeErr) {
+        console.error('Dynamic stage analysis failed, using static coords fallback:', analyzeErr);
+      }
+    }
+
     // Resolve API Key
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
@@ -292,77 +348,72 @@ export async function POST(request: Request) {
       ? 'deep navy blue, dark slate gray, futuristic glowing teal curves, and rich blue gradients'
       : 'soft warm off-white, light gray gradients, metallic clean silver curves, and subtle sky blue accents';
 
-    const prompt = `Create an ultra-premium, photorealistic-quality 2D corporate event LED screen backdrop wallpaper for a world-class business conference.
+    const prompt = `Create a premium corporate event LED screen background designed specifically for dynamic content placement.
 
-Design Style:
-A sophisticated, modern, luxury corporate keynote aesthetic inspired by Apple, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX, and AWS re:Invent stage visuals.
+This image will be used as the base artwork inside a real LED wall on a conference stage. The design must leave dedicated clean presentation zones where software-generated content (logos, event title, speaker names, sponsor logos, QR codes, agenda, etc.) will later be placed automatically.
 
-Visual Language:
-- Elegant flowing abstract wave compositions
-- Premium futuristic digital curves
-- Soft volumetric light gradients
-- Glassmorphism-inspired lighting
-- Luxury ambient glow
-- Minimal geometric structures
-- Smooth layered depth using only graphic elements
-- Dynamic flowing ribbons
-- Subtle technology-inspired patterns
-- High-end digital motion-inspired composition
-- Clean negative space for stage presentation
-- Perfect visual balance and symmetry
+Design Requirements:
+- Ultra-premium Fortune 500 corporate keynote aesthetic.
+- Modern, elegant, futuristic, luxury technology conference design.
+- Apple keynote, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX quality.
+- Smooth flowing abstract curves.
+- Premium glass-like gradients.
+- Soft volumetric lighting.
+- Elegant digital waves.
+- Clean geometric accents.
+- Balanced symmetry.
+- High-end visual hierarchy.
+- Cinematic lighting.
+- Rich premium color transitions.
+- Minimal but luxurious.
 
-Color Palette:
+Content Safe Area:
+- Create a large clean central content zone covering approximately 60-70% of the image.
+- The center must have a subtle bright gradient so dark text remains readable.
+- Keep decorative graphics around the outer edges only.
+- Never place important visual elements inside the center safe area.
+- The safe area must blend naturally with the artwork, not look like a white rectangle.
+- Create smooth feathered transitions from the decorative edges into the clean center.
+- Ensure enough empty breathing space for logos and text.
+
+Visual Integration:
+- The wallpaper should feel like it was designed for a real LED display.
+- No hard borders.
+- No visible frames.
+- No isolated white boxes.
+- No cut-out appearance.
+- The background should naturally guide the viewer's eyes toward the center.
+- Decorative elements should softly fade into the content area.
+
+Colors:
 ${colorsStr}
 
-Lighting:
-- Soft cinematic lighting
-- Premium LED glow
-- Smooth gradient transitions
-- Elegant bloom effects
-- Refined highlights
-- Luxurious depth without becoming busy
-- No harsh contrast
-- Rich premium color blending
-
-Composition:
-- Designed specifically for large-format LED walls
-- Ultra-clean center composition
-- Important visual elements remain inside safe margins
-- Balanced left and right sections
-- Natural eye flow across the wallpaper
-- No visual clutter
-- Suitable for keynote presentations
-
 Image Quality:
-- Ultra high resolution
+- Ultra HD
 - 8K quality
-- Razor-sharp details
+- Extremely sharp
 - Professional commercial artwork
-- Clean vector-like finish
-- No compression artifacts
-- Production-ready for large LED displays
+- Large-format LED display quality
+- Premium digital art
 
-Strict Requirements:
-- Flat 2D digital wallpaper only.
-- Do NOT generate any stage, auditorium, room, furniture, podium, microphones, truss, curtains, audience, ceiling, walls, lighting rigs, screens, projectors, people, cameras, or physical environment.
-- Do NOT generate mockups.
-- Do NOT generate perspective views.
-- Do NOT generate a poster.
-- Do NOT generate a billboard.
-- Do NOT generate frames.
-- Do NOT generate borders.
-- Do NOT generate shadows from physical objects.
-- Do NOT generate text.
-- Do NOT generate logos.
-- Do NOT generate branding.
-- Do NOT generate icons.
-- Do NOT generate UI elements.
-- Do NOT generate watermarks.
-- Do NOT generate any recognizable objects.
-
-The entire image should be a seamless edge-to-edge abstract LED backdrop that fills the complete canvas with premium corporate graphics.
-
-The result should look like it was created by an elite creative agency for a Fortune 500 global technology summit, with an extremely polished, luxurious, futuristic, and visually immersive aesthetic.`;
+Strictly DO NOT generate:
+- People
+- Stage
+- Auditorium
+- Furniture
+- Podium
+- Screens
+- Mockups
+- Physical objects
+- Text
+- Logos
+- Branding
+- Icons
+- Watermarks
+- UI Elements
+- Borders
+- Frames
+- Posters`;
 
     const startTime = Date.now();
 
@@ -441,7 +492,7 @@ The result should look like it was created by an elite creative agency for a For
 
     const composites: any[] = [];
 
-    // If the selected hall is Taj Lands End Ballroom (hallId = 19), let's cover the chrome stanchion stand in the bottom right corner
+    // If the selected hall is Taj Lands End Ballroom (hallId = 19), cover the chrome stanchion stand
     if (hall.id === 19) {
       try {
         const carpetPatch = await sharp(baseImageBuffer)
@@ -507,7 +558,15 @@ The result should look like it was created by an elite creative agency for a For
         }
       }
 
-      const hasScreenLogos = activeCustomLogos.length > 0 || activeLogosList.length > 0;
+      // Process uploaded custom logo buffers (removing transparent padding and resizing proportionally)
+      const base64CustomLogos: string[] = [];
+      const maxLogoW = Math.round(clampedW * 0.16);
+      const maxLogoH = Math.round(clampedH * 0.12);
+
+      for (const logoBuf of activeCustomLogos) {
+        const b64 = await processCustomLogo(logoBuf, maxLogoW, maxLogoH);
+        if (b64) base64CustomLogos.push(b64);
+      }
 
       // 1. Resize the OpenAI generated abstract wallpaper to the screen dimensions
       const screenBaseBuffer = await sharp(wallpaperBuffer)
@@ -516,7 +575,7 @@ The result should look like it was created by an elite creative agency for a For
         .toBuffer();
       const base64Wallpaper = screenBaseBuffer.toString('base64');
 
-      // 2. Create the transparent text, background image, and design decorations SVG overlay
+      // 2. Create the unified SVG containing skewed background, headers, texts, and embedded skewed logos
       const textOverlaySvg = createScreenTextOverlaySvg(
         clampedW,
         clampedH,
@@ -527,94 +586,52 @@ The result should look like it was created by an elite creative agency for a For
         finalVenue,
         finalFooter,
         screenTheme,
-        hasScreenLogos,
+        base64CustomLogos,
+        activeLogosList,
         skew
       );
 
-      // 3. Composite logos and text overlays on top of the skewed SVG structure
-      const innerComposites: any[] = [{
-        input: textOverlaySvg,
-        left: 0,
-        top: 0
-      }];
-
-      if (activeCustomLogos.length > 0) {
-        const totalLogosCount = activeCustomLogos.length;
-        const logoW = Math.round(Math.min(clampedW * 0.16, 120));
-        const logoH = Math.round(Math.min(clampedH * 0.12, 34));
-        const logoGap = Math.round(Math.min(15, clampedW * 0.02));
-
-        const rowW = totalLogosCount * logoW + (totalLogosCount - 1) * logoGap;
-        const startX = (clampedW - rowW) / 2;
-        const ly = 14;
-
-        for (let i = 0; i < totalLogosCount; i++) {
-          const lx = startX + i * (logoW + logoGap);
-          const resizedBuf = await sharp(activeCustomLogos[i])
-            .resize({ width: logoW, height: logoH, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
-            .toBuffer();
-
-          innerComposites.push({
-            input: resizedBuf,
-            left: Math.round(lx),
-            top: Math.round(ly),
-          });
-        }
-      } else if (activeLogosList.length > 0) {
-        const presetsSvg = createPresetLogosSvg(clampedW, clampedH, activeLogosList, screenTheme, skew);
-        innerComposites.push({
-          input: presetsSvg,
-          left: 0,
-          top: 0,
-        });
-      }
-
-      // Create transparent composite canvas to apply logos
-      const finalScreenOverlay = await sharp({
-        create: {
-          width: clampedW,
-          height: clampedH,
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 0 }
-        }
-      })
-      .composite(innerComposites)
-      .png()
-      .toBuffer();
-
       composites.push({
-        input: finalScreenOverlay,
+        input: textOverlaySvg,
         left: clampedX,
         top: clampedY,
       });
-
     };
 
     // Composite Center Screen
-    await addScreenComposite(
-      hall.centerMaskX,
-      hall.centerMaskY,
-      hall.centerMaskWidth,
-      hall.centerMaskHeight,
-      'center'
-    );
+    const mainScreen = analysis.main_screen;
+    if (mainScreen) {
+      await addScreenComposite(
+        mainScreen.bbox.x,
+        mainScreen.bbox.y,
+        mainScreen.bbox.width,
+        mainScreen.bbox.height,
+        'center'
+      );
+    }
 
     // Composite Left & Right Wings
     if (screenConfig === 'wings' || screenConfig === 'all') {
-      await addScreenComposite(
-        hall.leftMaskX,
-        hall.leftMaskY,
-        hall.leftMaskWidth,
-        hall.leftMaskHeight,
-        'left'
-      );
-      await addScreenComposite(
-        hall.rightMaskX,
-        hall.rightMaskY,
-        hall.rightMaskWidth,
-        hall.rightMaskHeight,
-        'right'
-      );
+      const leftScreen = analysis.left_screen;
+      if (leftScreen) {
+        await addScreenComposite(
+          leftScreen.bbox.x,
+          leftScreen.bbox.y,
+          leftScreen.bbox.width,
+          leftScreen.bbox.height,
+          'left'
+        );
+      }
+      const rightScreen = analysis.right_screen;
+      if (rightScreen) {
+        await addScreenComposite(
+          rightScreen.bbox.x,
+          rightScreen.bbox.y,
+          rightScreen.bbox.width,
+          rightScreen.bbox.height,
+          'right'
+        );
+      }
     }
 
     if (composites.length === 0) {
