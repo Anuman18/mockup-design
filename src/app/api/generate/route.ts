@@ -253,6 +253,7 @@ export async function POST(request: Request) {
     const screenTheme   = (formData.get('screenTheme') || 'light') as 'light' | 'dark';
     const wingDisplayMode = (formData.get('wingDisplayMode') || 'mirror') as 'mirror' | 'extended';
     const logosJson     = formData.get('logos') as string;
+    const customPrompt  = (formData.get('customPrompt') || '') as string;
 
     if (!hallId || isNaN(parseInt(hallId, 10))) {
       return NextResponse.json({ success: false, error: 'Valid hallId is required' }, { status: 400 });
@@ -305,32 +306,83 @@ export async function POST(request: Request) {
     const baseH = baseMetadata.height ?? 800;
 
     // Load or dynamically generate Stage Template JSON
-    let analysis = await loadStageTemplateJson(hall.id, baseW, baseH);
-    if (!analysis || !analysis.main_screen) {
-      try {
-        console.log(`No stage template found for hall ${hall.id}. Performing Stage Layout Analysis dynamically...`);
-        analysis = await analyzeStageLayout(baseImageBuffer, baseW, baseH);
-        await saveStageTemplateJson(hall.id, analysis);
-        // Sync detected bounding box back to database coordinates
-        await prisma.venueHall.update({
-          where: { id: hall.id },
-          data: {
-            centerMaskX:      analysis.main_screen.bbox.x,
-            centerMaskY:      analysis.main_screen.bbox.y,
-            centerMaskWidth:  analysis.main_screen.bbox.width,
-            centerMaskHeight: analysis.main_screen.bbox.height,
-            leftMaskX:        analysis.left_screen?.bbox.x ?? 0,
-            leftMaskY:        analysis.left_screen?.bbox.y ?? 0,
-            leftMaskWidth:    analysis.left_screen?.bbox.width ?? 0,
-            leftMaskHeight:   analysis.left_screen?.bbox.height ?? 0,
-            rightMaskX:       analysis.right_screen?.bbox.x ?? 0,
-            rightMaskY:       analysis.right_screen?.bbox.y ?? 0,
-            rightMaskWidth:   analysis.right_screen?.bbox.width ?? 0,
-            rightMaskHeight:  analysis.right_screen?.bbox.height ?? 0,
+    let analysis;
+    const hasDbCoordinates = hall.centerMaskWidth > 0;
+
+    if (hasDbCoordinates) {
+      // Use perfect, seeded database coordinates as the primary source of truth
+      const getPoly = (bb: { x: number, y: number, width: number, height: number }, skew = 0) => [
+        [bb.x, bb.y],
+        [bb.x + bb.width, bb.y + skew],
+        [bb.x + bb.width, bb.y + bb.height + skew],
+        [bb.x, bb.y + bb.height]
+      ] as [number, number][];
+
+      const mainBbox = { x: hall.centerMaskX, y: hall.centerMaskY, width: hall.centerMaskWidth, height: hall.centerMaskHeight };
+      const leftBbox = { x: hall.leftMaskX, y: hall.leftMaskY, width: hall.leftMaskWidth, height: hall.leftMaskHeight };
+      const rightBbox = { x: hall.rightMaskX, y: hall.rightMaskY, width: hall.rightMaskWidth, height: hall.rightMaskHeight };
+
+      analysis = {
+        main_screen: {
+          polygon: getPoly(mainBbox, 0),
+          bbox: mainBbox,
+          safe_area: {
+            x: Math.round(mainBbox.x + mainBbox.width * 0.08),
+            y: Math.round(mainBbox.y + mainBbox.height * 0.08),
+            width: Math.round(mainBbox.width * 0.84),
+            height: Math.round(mainBbox.height * 0.84)
           }
-        });
-      } catch (analyzeErr) {
-        console.error('Dynamic stage analysis failed, using static coords fallback:', analyzeErr);
+        },
+        left_screen: hall.leftMaskWidth > 0 ? {
+          polygon: getPoly(leftBbox, 3.5),
+          bbox: leftBbox,
+          safe_area: {
+            x: Math.round(leftBbox.x + leftBbox.width * 0.08),
+            y: Math.round(leftBbox.y + leftBbox.height * 0.08),
+            width: Math.round(leftBbox.width * 0.84),
+            height: Math.round(leftBbox.height * 0.84)
+          }
+        } : null,
+        right_screen: hall.rightMaskWidth > 0 ? {
+          polygon: getPoly(rightBbox, -3.5),
+          bbox: rightBbox,
+          safe_area: {
+            x: Math.round(rightBbox.x + rightBbox.width * 0.08),
+            y: Math.round(rightBbox.y + rightBbox.height * 0.08),
+            width: Math.round(rightBbox.width * 0.84),
+            height: Math.round(rightBbox.height * 0.84)
+          }
+        } : null
+      };
+    } else {
+      // Fallback: load JSON template or generate layout via dynamic stage analysis
+      analysis = await loadStageTemplateJson(hall.id, baseW, baseH);
+      if (!analysis || !analysis.main_screen) {
+        try {
+          console.log(`No stage template found for hall ${hall.id}. Performing Stage Layout Analysis dynamically...`);
+          analysis = await analyzeStageLayout(baseImageBuffer, baseW, baseH);
+          await saveStageTemplateJson(hall.id, analysis);
+          // Sync detected bounding box back to database coordinates
+          await prisma.venueHall.update({
+            where: { id: hall.id },
+            data: {
+              centerMaskX:      analysis.main_screen.bbox.x,
+              centerMaskY:      analysis.main_screen.bbox.y,
+              centerMaskWidth:  analysis.main_screen.bbox.width,
+              centerMaskHeight: analysis.main_screen.bbox.height,
+              leftMaskX:        analysis.left_screen?.bbox.x ?? 0,
+              leftMaskY:        analysis.left_screen?.bbox.y ?? 0,
+              leftMaskWidth:    analysis.left_screen?.bbox.width ?? 0,
+              leftMaskHeight:   analysis.left_screen?.bbox.height ?? 0,
+              rightMaskX:       analysis.right_screen?.bbox.x ?? 0,
+              rightMaskY:       analysis.right_screen?.bbox.y ?? 0,
+              rightMaskWidth:   analysis.right_screen?.bbox.width ?? 0,
+              rightMaskHeight:  analysis.right_screen?.bbox.height ?? 0,
+            }
+          });
+        } catch (analyzeErr) {
+          console.error('Dynamic stage analysis failed, using static coords fallback:', analyzeErr);
+        }
       }
     }
 
@@ -348,24 +400,39 @@ export async function POST(request: Request) {
       ? 'deep navy blue, dark slate gray, futuristic glowing teal curves, and rich blue gradients'
       : 'soft warm off-white, light gray gradients, metallic clean silver curves, and subtle sky blue accents';
 
+    let stylingDetails = `A sophisticated, modern, luxury corporate keynote aesthetic inspired by Apple, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX, and AWS re:Invent stage visuals.
+
+Visual Language:
+- Elegant flowing abstract wave compositions
+- Premium futuristic digital curves
+- Soft volumetric light gradients
+- Glassmorphism-inspired lighting
+- Luxury ambient glow
+- Minimal geometric structures
+- Smooth layered depth using only graphic elements
+- Dynamic flowing ribbons
+- Subtle technology-inspired patterns
+- High-end digital motion-inspired composition
+- Clean negative space for stage presentation
+- Perfect visual balance and symmetry`;
+
+    if (customPrompt.trim()) {
+      stylingDetails = `Aesthetic/Style Guidelines (User Requested):
+${customPrompt.trim()}
+
+Visual Language:
+- Elegant abstract event backdrop wallpaper
+- Clean negative space in center for text presentation
+- Soft volumetric lighting and ambient glow
+- Harmonious gradients and premium layout depth`;
+    }
+
     const prompt = `Create a premium corporate event LED screen background designed specifically for dynamic content placement.
 
 This image will be used as the base artwork inside a real LED wall on a conference stage. The design must leave dedicated clean presentation zones where software-generated content (logos, event title, speaker names, sponsor logos, QR codes, agenda, etc.) will later be placed automatically.
 
 Design Requirements:
-- Ultra-premium Fortune 500 corporate keynote aesthetic.
-- Modern, elegant, futuristic, luxury technology conference design.
-- Apple keynote, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX quality.
-- Smooth flowing abstract curves.
-- Premium glass-like gradients.
-- Soft volumetric lighting.
-- Elegant digital waves.
-- Clean geometric accents.
-- Balanced symmetry.
-- High-end visual hierarchy.
-- Cinematic lighting.
-- Rich premium color transitions.
-- Minimal but luxurious.
+${stylingDetails}
 
 Content Safe Area:
 - Create a large clean central content zone covering approximately 60-70% of the image.

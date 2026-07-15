@@ -188,6 +188,7 @@ export default function HomePage() {
   const [eventDate,       setEventDate]       = useState('');
   const [eventVenue,      setEventVenue]      = useState('');
   const [footerText,      setFooterText]      = useState('');
+  const [customPrompt,    setCustomPrompt]    = useState('');
   const [screenConfig,    setScreenConfig]    = useState<'center' | 'wings' | 'all'>('center');
   const [screenTheme,     setScreenTheme]     = useState<'light' | 'dark'>('light');
   const [wingDisplayMode, setWingDisplayMode] = useState<'mirror' | 'extended'>('mirror');
@@ -287,6 +288,7 @@ export default function HomePage() {
       fd.append('screenTheme',  screenTheme);
       fd.append('wingDisplayMode', wingDisplayMode);
       fd.append('logos',        JSON.stringify(selectedLogos));
+      fd.append('customPrompt', customPrompt);
 
       // Append all custom co-sponsor logos
       customLogoFiles.forEach((item, index) => {
@@ -550,6 +552,21 @@ export default function HomePage() {
                     className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
+              </div>
+
+              {/* Custom AI Backdrop Prompt Instructions */}
+              <div className="border-t border-slate-100 pt-4">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-blue-500" /> AI Backdrop Prompt Styling Guidelines
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Elegant glowing golden curves, dark luxury textures, high-technology gradients, neon particle lines..."
+                  value={customPrompt}
+                  onChange={e => setCustomPrompt(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
+                />
+                <span className="text-[10px] text-slate-400 font-medium block mt-1">Leave empty to use the default high-fidelity corporate keynote style.</span>
               </div>
 
               {/* Layout splits, themes, and screen configs */}
