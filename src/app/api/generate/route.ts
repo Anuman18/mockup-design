@@ -65,10 +65,9 @@ function createScreenTextOverlaySvg(
   const svg = `
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <!-- Screen Outer Glowing Halo for Realistic Light Spill -->
-        <filter id="screenGlow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="${accentColor}" flood-opacity="0.35"/>
-          <feDropShadow dx="0" dy="4" stdDeviation="24" flood-color="${isDark ? '#0284c7' : '#2563eb'}" flood-opacity="0.25"/>
+        <!-- Screen contact shadow to anchor screen on wall -->
+        <filter id="screenShadow" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.25"/>
         </filter>
         
         <!-- Ceiling Ambient Shadow mapping physical stage ceilings -->
@@ -104,7 +103,7 @@ function createScreenTextOverlaySvg(
         <image href="data:image/png;base64,${base64Wallpaper}" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" x="0" y="0" />
 
         <!-- Screen Outer Glowing Border backdrop -->
-        <rect width="100%" height="100%" fill="none" filter="url(#screenGlow)" />
+        <rect width="100%" height="100%" fill="none" filter="url(#screenShadow)" />
         
         <!-- Overhead spotlight illumination overlay -->
         <rect width="100%" height="100%" fill="url(#spotlightGlow_${W}_${H})" />
@@ -589,39 +588,6 @@ The result should look like it was created by an elite creative agency for a For
         top: clampedY,
       });
 
-      // 4. Generate light spill / glow on surrounding stage elements
-      // We extract the area around the screen, apply a heavy blur, screen blend mode, and composite it
-      try {
-        const glowRadius = Math.round(clampedW * 0.12);
-        const glowW = clampedW + glowRadius * 2;
-        const glowH = clampedH + glowRadius * 2;
-        const glowX = Math.max(0, clampedX - glowRadius);
-        const glowY = Math.max(0, clampedY - glowRadius);
-        const glowWidth = Math.min(glowW, baseW - glowX);
-        const glowHeight = Math.min(glowH, baseH - glowY);
-
-        const screenGlowOverlay = await sharp(finalScreenOverlay)
-          .extend({
-            top: glowRadius,
-            bottom: glowRadius,
-            left: glowRadius,
-            right: glowRadius,
-            background: { r: 0, g: 0, b: 0, alpha: 0 }
-          })
-          .blur(glowRadius / 2)
-          .resize(glowWidth, glowHeight)
-          .png()
-          .toBuffer();
-
-        composites.unshift({ // Add to start of composites list so it renders *behind* the crisp screen itself
-          input: screenGlowOverlay,
-          left: glowX,
-          top: glowY,
-          blend: 'screen'
-        });
-      } catch (glowErr) {
-        console.warn('Failed to generate light spill:', glowErr);
-      }
     };
 
     // Composite Center Screen
