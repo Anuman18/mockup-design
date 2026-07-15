@@ -313,27 +313,26 @@ export default function HomePage() {
     setSimulationImage('');
 
     try {
-      const colors = screenTheme === 'dark' 
-        ? ['Deep Navy Blue', 'Electric Cyan', 'Dark Slate Gray'] 
-        : ['Classic Royal Blue', 'Soft Off-White', 'Polished Silver'];
+      const fd = new FormData();
+      fd.append('hallId',       String(selHall.id));
+      fd.append('eventName',    eventName);
+      fd.append('eventSubtitle', eventSubtitle);
+      fd.append('eventDate',    eventDate);
+      fd.append('eventVenue',   eventVenue);
+      fd.append('footerText',   footerText);
+      fd.append('screenConfig', screenConfig);
+      fd.append('screenTheme',  screenTheme);
+      fd.append('wingDisplayMode', wingDisplayMode);
+      fd.append('logos',        JSON.stringify(selectedLogos));
+
+      // Append all custom co-sponsor logos
+      customLogoFiles.forEach((item, index) => {
+        fd.append(`customLogo_${index}`, item.file);
+      });
 
       const res = await fetch('/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          venue_id: selVenue?.id || 1,
-          hall_id: selHall.id,
-          stage_width: selHall.width || 12,
-          stage_length: selHall.length || 6,
-          stage_height: 3,
-          stage_finish: selStage?.name || 'Standard Riser',
-          seating_style: selSeating?.name || 'Theatre Rows',
-          seating_count: selHall.capacity || 200,
-          event_name: eventName,
-          event_date: eventDate,
-          theme_colors: colors,
-          custom_prompt_addon: eventSubtitle
-        })
+        body: fd
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || 'OpenAI GPT Image simulation generation failed');
@@ -841,16 +840,16 @@ export default function HomePage() {
                         <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
                         <Sparkles className="absolute inset-0 m-auto w-7 h-7 text-blue-600 animate-pulse" />
                       </div>
-                      <p className="text-slate-600 font-semibold">Simulating 3D architectural setup using OpenAI GPT Image model…</p>
-                      <p className="text-slate-400 text-sm">Synthesizing isolated rendering on pure white background.</p>
+                      <p className="text-slate-600 font-semibold">Generating 3D AI stage backdrop design…</p>
+                      <p className="text-slate-400 text-sm">Rendering photorealistic screen layouts on the selected hall room photo.</p>
                     </div>
                   )}
 
                   {simulationImage && !generating && (
-                    <div className="space-y-6">
-                      {/* White-blend borderless card for native appearance */}
-                      <div className="bg-white flex items-center justify-center p-0 overflow-hidden mx-auto max-w-[500px]">
-                        <img src={simulationImage} alt="Simulated event setup" className="w-full h-auto max-h-[500px] object-contain block mix-blend-multiply" />
+                    <div className="space-y-4">
+                      {/* Rounded card for photorealistic appearance */}
+                      <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
+                        <img src={simulationImage} alt="Simulated event setup" className="w-full h-auto" />
                       </div>
                       <div className="flex gap-3">
                         <button
