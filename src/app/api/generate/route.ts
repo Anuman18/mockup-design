@@ -21,119 +21,107 @@ export async function POST(request: Request) {
       event_date,
       theme_colors,
       custom_prompt_addon,
+      openai_api_key,
       gemini_api_key
     } = body;
 
     const colorsStr = (theme_colors || []).join(', ');
     
-    // Prompt construction logic
-    let prompt = `A professional, photorealistic 3D architectural rendering of an indoor event setup. `;
-    prompt += `Venue Hall Configuration: ID ${hall_id} inside Venue ID ${venue_id}. `;
-    prompt += `Stage Details: Large stage measuring ${stage_width}m wide x ${stage_length}m deep x ${stage_height}m high, finished with premium ${stage_finish}. `;
-    prompt += `Backdrop features custom branding panels styled in theme colors (${colorsStr}) and showing the event title "${event_name}". `;
-    
-    if (branding_template_id) {
-      prompt += `Branding elements from template ID ${branding_template_id} are applied elegantly. `;
-    }
-    
-    prompt += `Seating: Arranged in a precise "${seating_style}" layout with ${seating_count} modern chairs. `;
-    
-    if (stall_count && stall_count > 0) {
-      prompt += `Exhibition space has ${stall_count} ${stall_type} octanorm stalls arranged neatly in rows. `;
-    }
-    
-    if (outdoor_structure) {
-      prompt += `Outdoor reception space includes a heavy-duty ${outdoor_structure} canopy structure. `;
-    }
-    
-    if (custom_prompt_addon) {
-      prompt += `Additional directions: "${custom_prompt_addon}". `;
-    }
-    
-    prompt += `Lighting: Warm spotlights, ambient structural glow, photorealistic textures, volumetric lighting, 8k resolution render, unreal engine 5 architectural visualization style.`;
+    // Resolve API Key (Priority: request parameter -> env variables)
+    const apiKey = openai_api_key || gemini_api_key || process.env.OPENAI_API_KEY;
 
-    const apiKey = gemini_api_key || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({
+        success: false,
+        error: 'OpenAI API Key is required. Please set OPENAI_API_KEY in your environment or pass it in the request.'
+      }, { status: 400 });
+    }
 
-    if (apiKey) {
-      // Execute REAL Google Gemini API image generation (Imagen 3)
+    const startTime = Date.now();
+
+    // System prompt instructing the GPT model to generate a premium SVG image
+    const systemPrompt = `You are a master UI/UX architect and principal SVG designer.
+Your task is to generate a premium, high-resolution, modern 3D vector illustration of an event hall setup.
+The illustration must look like a native part of a clean, premium SaaS dashboard.
+
+CRITICAL SVG DESIGN RULES:
+1. Return ONLY the valid raw SVG xml content. Do NOT wrap it in markdown code blocks (\`\`\`xml ... \`\`\`), HTML wrappers, or any explanation. Start immediately with "<svg" and end with "</svg>".
+2. The SVG viewport must be width="800" height="500" viewBox="0 0 800 500".
+3. Use a transparent or solid pure white (#FFFFFF) background to blend seamlessly into a white user interface. No dark backgrounds, no outer borders.
+4. Draw a realistic 3D isometric or perspective projection of the stage and seating setup.
+5. Apply modern, elegant gradients, soft shadows (using <filter><feDropShadow .../></filter>), and ambient glows.
+6. The stage backdrop screen must prominently display the event name.
+7. Include detailed elements: stage platform, backdrop panel, speakers podium, lighting trusses with spotlight rays, and rows of seats matching the requested layout.
+8. Colors: Use the provided theme colors for branding gradients, and neutral slates/grays for structural items.
+9. Ensure all text elements are readable and properly centered.`;
+
+    const userPrompt = `Generate an SVG event setup visualization for:
+- Event Name: "${event_name}"
+- Stage Finish Style: "${stage_finish}"
+- Seating Arrangement: "${seating_style}" (Capacity: ${seating_count} seats)
+- Theme Colors: ${colorsStr}
+- Additional Info: "${custom_prompt_addon || 'none'}"
+
+Design a beautiful, premium perspective illustration with rows of chairs, a stage riser, a clean screen showing the event title, and soft spotlight rays.`;
+
+    // Call OpenAI Chat Completions API with gpt-4o
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0.2
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      let errMsg = `HTTP ${response.status}`;
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:generateImages?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt,
-            numberOfImages: 1,
-            outputMimeType: 'image/jpeg',
-            aspectRatio: '16:9'
-          })
-        });
-
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error?.message || `HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-        const imageBytes = data.generatedImages?.[0]?.image?.imageBytes;
-        if (!imageBytes) {
-          throw new Error('No image bytes returned from Imagen API');
-        }
-
-        return NextResponse.json({
-          success: true,
-          prompt,
-          image_url: `data:image/jpeg;base64,${imageBytes}`,
-          metadata: {
-            engine: 'Google Imagen 3 (Active)',
-            resolution: '16:9',
-            generation_time_seconds: 3.5
-          },
-          event_details: {
-            name: event_name,
-            date: event_date,
-            theme_colors
-          }
-        });
-      } catch (geminiErr: any) {
-        console.error('Gemini Imagen API error:', geminiErr);
-        return NextResponse.json({ 
-          success: false, 
-          error: `Gemini Imagen API error: ${geminiErr.message}` 
-        }, { status: 502 });
-      }
+        const errJson = JSON.parse(errText);
+        errMsg = errJson.error?.message || errMsg;
+      } catch (e) {}
+      throw new Error(`OpenAI GPT API error: ${errMsg}`);
     }
 
-    // Fallback Mock values if no API Key is provided
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const mockImages: Record<string, string> = {
-      theatre: 'https://images.unsplash.com/photo-1511578314322-379afb476865?auto=format&fit=crop&w=1200&q=80',
-      cluster: 'https://images.unsplash.com/photo-1505232458627-539f97658a35?auto=format&fit=crop&w=1200&q=80',
-      classroom: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&w=1200&q=80',
-      banquet: 'https://images.unsplash.com/photo-1464366400600-7168b8af9bc3?auto=format&fit=crop&w=1200&q=80',
-      default: 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?auto=format&fit=crop&w=1200&q=80',
-    };
+    const data = await response.json();
+    let svgContent = data.choices?.[0]?.message?.content || '';
 
-    const styleKey = (seating_style || 'default').toLowerCase();
-    const imageUrl = mockImages[styleKey] || mockImages.default;
+    // Clean up codeblock markers if GPT adds them despite rules
+    svgContent = svgContent.replace(/^```xml\s*/i, '').replace(/^```html\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim();
+
+    if (!svgContent.startsWith('<svg')) {
+      throw new Error('GPT did not return a valid SVG. Please check parameters and try again.');
+    }
+
+    const base64 = Buffer.from(svgContent).toString('base64');
+    const duration = ((Date.now() - startTime) / 1000).toFixed(1);
 
     return NextResponse.json({
       success: true,
-      prompt,
-      image_url: imageUrl,
+      prompt: userPrompt,
+      image_url: `data:image/svg+xml;base64,${base64}`,
       metadata: {
-        engine: 'DALL-E 3 (Mocked API Fallback)',
-        resolution: '1024x1024',
-        generation_time_seconds: 1.5,
-        estimated_tokens_cost: 0.08,
+        engine: 'OpenAI GPT-4o (Active Vector Render)',
+        resolution: '800x500 (Vector)',
+        generation_time_seconds: parseFloat(duration)
       },
       event_details: {
         name: event_name,
         date: event_date,
-        theme_colors,
+        theme_colors
       }
     });
 
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    console.error('OpenAI GPT generation route error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

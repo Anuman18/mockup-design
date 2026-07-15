@@ -198,6 +198,8 @@ export default function HomePage() {
   // Visualization Generation
   const [generating,  setGenerating]  = useState(false);
   const [resultImage, setResultImage] = useState('');
+  const [simulationImage, setSimulationImage] = useState('');
+  const [genMode,     setGenMode]     = useState<'composite' | 'simulation'>('composite');
   const [genError,    setGenError]    = useState('');
 
   useEffect(() => {
@@ -300,6 +302,44 @@ export default function HomePage() {
       setResultImage(data.imageBase64);
     } catch (e: any) {
       setGenError(e.message || 'Unknown error occurred');
+    }
+    setGenerating(false);
+  };
+
+  const generateSimulation = async () => {
+    if (!selHall || !eventName.trim()) return;
+    setGenerating(true);
+    setGenError('');
+    setSimulationImage('');
+
+    try {
+      const colors = screenTheme === 'dark' 
+        ? ['Deep Navy Blue', 'Electric Cyan', 'Dark Slate Gray'] 
+        : ['Classic Royal Blue', 'Soft Off-White', 'Polished Silver'];
+
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          venue_id: selVenue?.id || 1,
+          hall_id: selHall.id,
+          stage_width: selHall.width || 12,
+          stage_length: selHall.length || 6,
+          stage_height: 3,
+          stage_finish: selStage?.name || 'Standard Riser',
+          seating_style: selSeating?.name || 'Theatre Rows',
+          seating_count: selHall.capacity || 200,
+          event_name: eventName,
+          event_date: eventDate,
+          theme_colors: colors,
+          custom_prompt_addon: eventSubtitle
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'OpenAI DALL-E 3 simulation generation failed');
+      setSimulationImage(data.image_url);
+    } catch (e: any) {
+      setGenError(e.message || 'Unknown error occurred during simulation');
     }
     setGenerating(false);
   };
@@ -669,87 +709,187 @@ export default function HomePage() {
           {/* ── STEP 3: Generate ─────────────────────────────────────────── */}
           {step === 3 && (
             <div className="space-y-6 animate-fade-in">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-blue-500" /> Render Visualization
+              <h3 className="text-lg font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-blue-500" /> Render Visualization
+                </span>
               </h3>
 
-              {!resultImage && !generating && (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Configuration Summary</p>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div><span className="text-slate-400 text-xs block">City</span><b className="text-slate-800">{selCity?.name}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Venue</span><b className="text-slate-800">{selVenue?.name}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Hall</span><b className="text-slate-800">{selHall?.name}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Stage Style</span><b className="text-slate-800">{selStage?.name}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Seating</span><b className="text-slate-800">{selSeating?.name}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Event Name</span><b className="text-slate-800">{eventName}</b></div>
-                    <div><span className="text-slate-400 text-xs block">Screen Config</span><b className="text-slate-800 uppercase text-xs">{screenConfig} ({wingDisplayMode} Mode)</b></div>
-                    <div><span className="text-slate-400 text-xs block">Theme Style</span><b className="text-slate-800 uppercase text-xs">{screenTheme} Theme</b></div>
-                    <div>
-                      <span className="text-slate-400 text-xs block">Logo Mode</span>
-                      <b className="text-slate-800 text-xs">
-                        {customLogoFiles.length > 0 ? `Custom (${customLogoFiles.length} uploaded)` : `Presets (${selectedLogos.length} selected)`}
-                      </b>
-                    </div>
-                  </div>
-                </div>
-              )}
+              {/* Mode Toggle Selector */}
+              <div className="flex border border-slate-200 rounded-2xl overflow-hidden text-xs bg-slate-50 p-1 w-fit mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setGenMode('composite')}
+                  className={`px-5 py-2.5 rounded-xl font-bold transition-all duration-150 ${genMode === 'composite' ? 'bg-white text-blue-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-850'}`}
+                >
+                  Stage Backdrop Composite
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGenMode('simulation')}
+                  className={`px-5 py-2.5 rounded-xl font-bold transition-all duration-150 ${genMode === 'simulation' ? 'bg-white text-blue-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-850'}`}
+                >
+                  3D AI Layout Simulation
+                </button>
+              </div>
 
               {genError && (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 text-sm text-red-700">
                   <X className="w-4 h-4 shrink-0 mt-0.5" />
-                  <div><b>Compositing error:</b> {genError}</div>
+                  <div><b>Generation error:</b> {genError}</div>
                 </div>
               )}
 
-              {generating && (
-                <div className="text-center py-16 space-y-4">
-                  <div className="relative w-20 h-20 mx-auto">
-                    <div className="w-20 h-20 rounded-full border-4 border-blue-100" />
-                    <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
-                    <Sparkles className="absolute inset-0 m-auto w-7 h-7 text-blue-600" />
-                  </div>
-                  <p className="text-slate-600 font-semibold">Generating visual overlay layout…</p>
-                  <p className="text-slate-400 text-sm">Overlaying sponsors and title text.</p>
-                </div>
-              )}
+              {/* ── MODE 1: COMPOSITE ── */}
+              {genMode === 'composite' && (
+                <>
+                  {!resultImage && !generating && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Configuration Summary</p>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-slate-400 text-xs block">City</span><b className="text-slate-800">{selCity?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Venue</span><b className="text-slate-800">{selVenue?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Hall</span><b className="text-slate-800">{selHall?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Stage Style</span><b className="text-slate-800">{selStage?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Seating</span><b className="text-slate-800">{selSeating?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Event Name</span><b className="text-slate-800">{eventName}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Screen Config</span><b className="text-slate-800 uppercase text-xs">{screenConfig} ({wingDisplayMode} Mode)</b></div>
+                        <div><span className="text-slate-400 text-xs block">Theme Style</span><b className="text-slate-800 uppercase text-xs">{screenTheme} Theme</b></div>
+                        <div>
+                          <span className="text-slate-400 text-xs block">Logo Mode</span>
+                          <b className="text-slate-800 text-xs">
+                            {customLogoFiles.length > 0 ? `Custom (${customLogoFiles.length} uploaded)` : `Presets (${selectedLogos.length} selected)`}
+                          </b>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
-              {resultImage && !generating && (
-                <div className="space-y-4">
-                  <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
-                    <img src={resultImage} alt="Generated event visualization" className="w-full h-auto" />
-                  </div>
-                  <div className="flex gap-3">
+                  {generating && (
+                    <div className="text-center py-16 space-y-4">
+                      <div className="relative w-20 h-20 mx-auto">
+                        <div className="w-20 h-20 rounded-full border-4 border-blue-100" />
+                        <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+                        <Sparkles className="absolute inset-0 m-auto w-7 h-7 text-blue-600" />
+                      </div>
+                      <p className="text-slate-600 font-semibold">Generating visual overlay layout…</p>
+                      <p className="text-slate-400 text-sm">Overlaying sponsors and title text.</p>
+                    </div>
+                  )}
+
+                  {resultImage && !generating && (
+                    <div className="space-y-4">
+                      <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-lg">
+                        <img src={resultImage} alt="Generated event visualization" className="w-full h-auto" />
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={download}
+                          className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                        >
+                          <Download className="w-4 h-4" /> Download Rendering
+                        </button>
+                        <button
+                          onClick={() => window.open(resultImage, '_blank')}
+                          className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-semibold text-sm hover:bg-slate-200 transition flex items-center justify-center gap-2"
+                        >
+                          <Eye className="w-4 h-4" /> Open Full Screen
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => { setResultImage(''); setGenError(''); }}
+                        className="w-full text-blue-600 text-sm font-medium hover:underline text-center block mt-3"
+                      >
+                        ↩ Make changes or try another layout
+                      </button>
+                    </div>
+                  )}
+
+                  {!resultImage && !generating && (
                     <button
-                      onClick={download}
-                      className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                      onClick={generate}
+                      disabled={!selHall || !eventName.trim() || (selectedLogos.length === 0 && customLogoFiles.length === 0)}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
                     >
-                      <Download className="w-4 h-4" /> Download Rendering
+                      <Sparkles className="w-5 h-5" /> Generate AI Layout
                     </button>
-                    <button
-                      onClick={() => window.open(resultImage, '_blank')}
-                      className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-semibold text-sm hover:bg-slate-200 transition flex items-center justify-center gap-2"
-                    >
-                      <Eye className="w-4 h-4" /> Open Full Screen
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => { setResultImage(''); setGenError(''); }}
-                    className="w-full text-blue-600 text-sm font-medium hover:underline text-center block mt-3"
-                  >
-                    ↩ Make changes or try another layout
-                  </button>
-                </div>
+                  )}
+                </>
               )}
 
-              {!resultImage && !generating && (
-                <button
-                  onClick={generate}
-                  disabled={!selHall || !eventName.trim() || (selectedLogos.length === 0 && customLogoFiles.length === 0)}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                >
-                  <Sparkles className="w-5 h-5" /> Generate AI Layout
-                </button>
+              {/* ── MODE 2: SIMULATION ── */}
+              {genMode === 'simulation' && (
+                <>
+                  {!simulationImage && !generating && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">OpenAI DALL-E 3 Simulation parameters</p>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div><span className="text-slate-400 text-xs block">Engine</span><b className="text-slate-800">DALL-E 3 (GPT Image Model)</b></div>
+                        <div><span className="text-slate-400 text-xs block">UI Blending</span><b className="text-slate-800">Seamless Isolated #FFFFFF</b></div>
+                        <div><span className="text-slate-400 text-xs block">Stage finish</span><b className="text-slate-800">{selStage?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Seating setup</span><b className="text-slate-800">{selSeating?.name}</b></div>
+                        <div><span className="text-slate-400 text-xs block">Capacity</span><b className="text-slate-800">{selHall?.capacity} modern seats</b></div>
+                        <div><span className="text-slate-400 text-xs block">Title Text</span><b className="text-slate-800">{eventName}</b></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {generating && (
+                    <div className="text-center py-16 space-y-4">
+                      <div className="relative w-20 h-20 mx-auto">
+                        <div className="w-20 h-20 rounded-full border-4 border-blue-100" />
+                        <div className="absolute inset-0 w-20 h-20 rounded-full border-4 border-blue-600 border-t-transparent animate-spin" />
+                        <Sparkles className="absolute inset-0 m-auto w-7 h-7 text-blue-600 animate-pulse" />
+                      </div>
+                      <p className="text-slate-600 font-semibold">Simulating 3D architectural setup using DALL-E 3…</p>
+                      <p className="text-slate-400 text-sm">Synthesizing isolated rendering on pure white background.</p>
+                    </div>
+                  )}
+
+                  {simulationImage && !generating && (
+                    <div className="space-y-6">
+                      {/* White-blend borderless card for native appearance */}
+                      <div className="bg-white flex items-center justify-center p-0 overflow-hidden mx-auto max-w-[500px]">
+                        <img src={simulationImage} alt="Simulated event setup" className="w-full h-auto max-h-[500px] object-contain block mix-blend-multiply" />
+                      </div>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => {
+                            const a = document.createElement('a');
+                            a.href = simulationImage;
+                            a.download = `${eventName || 'simulation'}-3d-model.png`;
+                            a.click();
+                          }}
+                          className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm hover:bg-blue-700 transition flex items-center justify-center gap-2"
+                        >
+                          <Download className="w-4 h-4" /> Download Simulation
+                        </button>
+                        <button
+                          onClick={() => window.open(simulationImage, '_blank')}
+                          className="flex-1 bg-slate-100 text-slate-700 py-3 rounded-xl font-semibold text-sm hover:bg-slate-200 transition flex items-center justify-center gap-2"
+                        >
+                          <Eye className="w-4 h-4" /> Open Full Screen
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => { setSimulationImage(''); setGenError(''); }}
+                        className="w-full text-blue-600 text-sm font-medium hover:underline text-center block mt-3"
+                      >
+                        ↩ Regenerate with new setup parameters
+                      </button>
+                    </div>
+                  )}
+
+                  {!simulationImage && !generating && (
+                    <button
+                      onClick={generateSimulation}
+                      disabled={!selHall || !eventName.trim()}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-2xl font-bold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                    >
+                      <Sparkles className="w-5 h-5" /> Generate 3D AI Simulation
+                    </button>
+                  )}
+                </>
               )}
             </div>
           )}
