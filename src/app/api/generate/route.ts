@@ -27,9 +27,9 @@ function createScreenTextOverlaySvg(
   const cleanVenue = venueText ? venueText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
   const cleanFooter = footerText ? footerText.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
 
-  const textColor  = isDark ? '#f8fafc' : '#1c1917';
-  const subTextColor = isDark ? '#94a3b8' : '#57534e';
-  const accentColor = isDark ? '#38bdf8' : '#2563eb';
+  const textColor  = isDark ? '#f8fafc' : '#0f172a';
+  const subTextColor = isDark ? '#94a3b8' : '#475569';
+  const accentColor = isDark ? '#38bdf8' : '#1d4ed8';
 
   const titleSize = Math.min(W * 0.052, H * 0.13, 38);
   const subSize = Math.max(9, titleSize * 0.45);
@@ -65,29 +65,30 @@ function createScreenTextOverlaySvg(
   const svg = `
     <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <!-- Screen Outer Glowing Halo -->
-        <filter id="screenGlow" x="-15%" y="-15%" width="130%" height="130%">
-          <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="${accentColor}" flood-opacity="0.25"/>
+        <!-- Screen Outer Glowing Halo for Realistic Light Spill -->
+        <filter id="screenGlow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="${accentColor}" flood-opacity="0.35"/>
+          <feDropShadow dx="0" dy="4" stdDeviation="24" flood-color="${isDark ? '#0284c7' : '#2563eb'}" flood-opacity="0.25"/>
         </filter>
         
-        <!-- Ceiling Ambient Shadow -->
+        <!-- Ceiling Ambient Shadow mapping physical stage ceilings -->
         <linearGradient id="ceilingShadow_${W}_${H}" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="rgba(0, 0, 0, 0.45)" />
-          <stop offset="16%" stop-color="rgba(0, 0, 0, 0.15)" />
+          <stop offset="0%" stop-color="rgba(0, 0, 0, 0.5)" />
+          <stop offset="18%" stop-color="rgba(0, 0, 0, 0.15)" />
           <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
         </linearGradient>
 
-        <!-- Stage Spotlight highlight -->
+        <!-- Stage Spotlight highlight matching real stage spots -->
         <radialGradient id="spotlightGlow_${W}_${H}" cx="50%" cy="0%" r="90%">
-          <stop offset="0%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.4)' : 'rgba(255, 255, 255, 0.7)'}" />
-          <stop offset="55%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.08)' : 'rgba(255, 255, 255, 0.18)'}" />
+          <stop offset="0%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.45)' : 'rgba(255, 255, 255, 0.75)'}" />
+          <stop offset="55%" stop-color="${isDark ? 'rgba(56, 189, 248, 0.1)' : 'rgba(255, 255, 255, 0.22)'}" />
           <stop offset="100%" stop-color="rgba(0, 0, 0, 0)" />
         </radialGradient>
 
-        <!-- Anti-reflective matte noise texture -->
+        <!-- Anti-reflective matte noise texture for real LED panel feel -->
         <filter id="matteBackdropTexture_${W}_${H}">
-          <feTurbulence type="fractalNoise" baseFrequency="0.95" numOctaves="3" result="noise" />
-          <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.05 0" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.98" numOctaves="4" result="noise" />
+          <feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.06 0" />
           <feComposite operator="in" in2="SourceGraphic" />
         </filter>
       </defs>
@@ -105,7 +106,7 @@ function createScreenTextOverlaySvg(
 
         <!-- Realistic high-density LED panel pixel grid pattern -->
         <pattern id="ledGridPattern" width="4" height="4" patternUnits="userSpaceOnUse">
-          <circle cx="2" cy="2" r="0.65" fill="${isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)'}" />
+          <circle cx="2" cy="2" r="0.65" fill="${isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)'}" />
         </pattern>
         <rect width="100%" height="100%" fill="url(#ledGridPattern)" />
 
@@ -116,7 +117,7 @@ function createScreenTextOverlaySvg(
         <rect width="100%" height="100%" fill="url(#ceilingShadow_${W}_${H})" />
 
         <!-- Thin LED screen frame border bezel -->
-        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.3)' : 'rgba(37, 99, 235, 0.2)'}" stroke-width="1.5" />
+        <rect x="0.5" y="0.5" width="${W - 1}" height="${H - 1}" rx="5.5" fill="none" stroke="${isDark ? 'rgba(56, 189, 248, 0.35)' : 'rgba(37, 99, 235, 0.25)'}" stroke-width="1.5" />
         
         <!-- Subtitle -->
         ${cleanSub ? `
@@ -505,6 +506,40 @@ It must look like a professional, clean digital canvas design, with NO text, NO 
         left: clampedX,
         top: clampedY,
       });
+
+      // 4. Generate light spill / glow on surrounding stage elements
+      // We extract the area around the screen, apply a heavy blur, screen blend mode, and composite it
+      try {
+        const glowRadius = Math.round(clampedW * 0.12);
+        const glowW = clampedW + glowRadius * 2;
+        const glowH = clampedH + glowRadius * 2;
+        const glowX = Math.max(0, clampedX - glowRadius);
+        const glowY = Math.max(0, clampedY - glowRadius);
+        const glowWidth = Math.min(glowW, baseW - glowX);
+        const glowHeight = Math.min(glowH, baseH - glowY);
+
+        const screenGlowOverlay = await sharp(finalScreenOverlay)
+          .extend({
+            top: glowRadius,
+            bottom: glowRadius,
+            left: glowRadius,
+            right: glowRadius,
+            background: { r: 0, g: 0, b: 0, alpha: 0 }
+          })
+          .blur(glowRadius / 2)
+          .resize(glowWidth, glowHeight)
+          .png()
+          .toBuffer();
+
+        composites.unshift({ // Add to start of composites list so it renders *behind* the crisp screen itself
+          input: screenGlowOverlay,
+          left: glowX,
+          top: glowY,
+          blend: 'screen'
+        });
+      } catch (glowErr) {
+        console.warn('Failed to generate light spill:', glowErr);
+      }
     };
 
     // Composite Center Screen
