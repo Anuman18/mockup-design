@@ -395,12 +395,23 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // Formulate a beautiful prompt for the digital corporate screen wallpaper design
-    const colorsStr = screenTheme === 'dark'
-      ? 'deep navy blue, dark slate gray, futuristic glowing teal curves, and rich blue gradients'
-      : 'soft warm off-white, light gray gradients, metallic clean silver curves, and subtle sky blue accents';
+    let prompt = '';
 
-    let stylingDetails = `A sophisticated, modern, luxury corporate keynote aesthetic inspired by Apple, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX, and AWS re:Invent stage visuals.
+    if (customPrompt.trim()) {
+      // If user inputs a custom prompt, pass it directly to OpenAI for exact creative control
+      prompt = customPrompt.trim();
+    } else {
+      // Formulate a beautiful prompt for the digital corporate screen wallpaper design
+      const colorsStr = screenTheme === 'dark'
+        ? 'deep navy blue, dark slate gray, futuristic glowing teal curves, and rich blue gradients'
+        : 'soft warm off-white, light gray gradients, metallic clean silver curves, and subtle sky blue accents';
+
+      prompt = `Create a premium corporate event LED screen background designed specifically for dynamic content placement.
+
+This image will be used as the base artwork inside a real LED wall on a conference stage. The design must leave dedicated clean presentation zones where software-generated content (logos, event title, speaker names, sponsor logos, QR codes, agenda, etc.) will later be placed automatically.
+
+Design Requirements:
+A sophisticated, modern, luxury corporate keynote aesthetic inspired by Apple, Microsoft Build, Google I/O, NVIDIA GTC, Adobe MAX, and AWS re:Invent stage visuals.
 
 Visual Language:
 - Elegant flowing abstract wave compositions
@@ -414,25 +425,7 @@ Visual Language:
 - Subtle technology-inspired patterns
 - High-end digital motion-inspired composition
 - Clean negative space for stage presentation
-- Perfect visual balance and symmetry`;
-
-    if (customPrompt.trim()) {
-      stylingDetails = `Aesthetic/Style Guidelines (User Requested):
-${customPrompt.trim()}
-
-Visual Language:
-- Elegant abstract event backdrop wallpaper
-- Clean negative space in center for text presentation
-- Soft volumetric lighting and ambient glow
-- Harmonious gradients and premium layout depth`;
-    }
-
-    const prompt = `Create a premium corporate event LED screen background designed specifically for dynamic content placement.
-
-This image will be used as the base artwork inside a real LED wall on a conference stage. The design must leave dedicated clean presentation zones where software-generated content (logos, event title, speaker names, sponsor logos, QR codes, agenda, etc.) will later be placed automatically.
-
-Design Requirements:
-${stylingDetails}
+- Perfect visual balance and symmetry
 
 Content Safe Area:
 - Create a large clean central content zone covering approximately 60-70% of the image.
@@ -481,6 +474,7 @@ Strictly DO NOT generate:
 - Borders
 - Frames
 - Posters`;
+    }
 
     const startTime = Date.now();
 

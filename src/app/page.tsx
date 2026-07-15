@@ -495,6 +495,23 @@ export default function HomePage() {
                 <Star className="w-5 h-5 text-blue-500" /> Branding & Title Configurator
               </h3>
 
+              {/* AI Backdrop Prompt Input Card */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-2xl border border-blue-200 shadow-sm">
+                <label className="text-xs font-bold text-blue-700 uppercase tracking-widest block mb-2.5 flex items-center gap-1.5">
+                  <Sparkles className="w-4.5 h-4.5 text-blue-600 animate-pulse" /> Custom AI Stage Backdrop Prompt (Direct OpenAI Control)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="Enter your exact custom DALL-E prompt here (e.g. 'A stunning 3D futuristic corporate event stage backdrop screen wallpaper with glowing golden lines, dark premium metallic textures, and soft blue particles. Modern abstract global summit keynote background, 8K resolution, clean vector-like design.')"
+                  value={customPrompt}
+                  onChange={e => setCustomPrompt(e.target.value)}
+                  className="w-full border border-blue-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white text-slate-800 shadow-inner"
+                />
+                <span className="text-[11px] text-blue-600/70 font-semibold block mt-1.5 leading-normal">
+                  💡 Type exactly what you want the stage background to look like. OpenAI will generate it word-for-word. Leave empty to use the default luxury corporate waves.
+                </span>
+              </div>
+
               {/* Event Title & Subtitle */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -554,20 +571,7 @@ export default function HomePage() {
                 </div>
               </div>
 
-              {/* Custom AI Backdrop Prompt Instructions */}
-              <div className="border-t border-slate-100 pt-4">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block mb-2 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-blue-500" /> AI Backdrop Prompt Styling Guidelines
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Elegant glowing golden curves, dark luxury textures, high-technology gradients, neon particle lines..."
-                  value={customPrompt}
-                  onChange={e => setCustomPrompt(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium"
-                />
-                <span className="text-[10px] text-slate-400 font-medium block mt-1">Leave empty to use the default high-fidelity corporate keynote style.</span>
-              </div>
+
 
               {/* Layout splits, themes, and screen configs */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-slate-100 pt-4">
