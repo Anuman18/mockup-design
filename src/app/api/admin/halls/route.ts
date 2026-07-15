@@ -109,7 +109,8 @@ export async function POST(request: Request) {
       },
     });
 
-    // Run dynamic stage analysis on uploaded hall photo
+    // Run dynamic stage analysis on uploaded hall photo if coordinates are not manually configured
+    const isManualConfig = centerMaskWidth > 0 || leftMaskWidth > 0 || rightMaskWidth > 0;
     if (baseImageUrl) {
       try {
         const { analyzeStageLayout, saveStageTemplateJson } = await import('@/lib/stage-analyzer');
@@ -120,27 +121,76 @@ export async function POST(request: Request) {
         const W = metadata.width || 1200;
         const H = metadata.height || 800;
 
-        const analysis = await analyzeStageLayout(imageBuffer, W, H);
-        await saveStageTemplateJson(hall.id, analysis);
+        let analysis;
+        if (!isManualConfig) {
+          analysis = await analyzeStageLayout(imageBuffer, W, H);
+          await saveStageTemplateJson(hall.id, analysis);
 
-        // Update the hall record with AI-detected coordinates
-        await prisma.venueHall.update({
-          where: { id: hall.id },
-          data: {
-            centerMaskX:      analysis.main_screen.bbox.x,
-            centerMaskY:      analysis.main_screen.bbox.y,
-            centerMaskWidth:  analysis.main_screen.bbox.width,
-            centerMaskHeight: analysis.main_screen.bbox.height,
-            leftMaskX:        analysis.left_screen?.bbox.x ?? 0,
-            leftMaskY:        analysis.left_screen?.bbox.y ?? 0,
-            leftMaskWidth:    analysis.left_screen?.bbox.width ?? 0,
-            leftMaskHeight:   analysis.left_screen?.bbox.height ?? 0,
-            rightMaskX:       analysis.right_screen?.bbox.x ?? 0,
-            rightMaskY:       analysis.right_screen?.bbox.y ?? 0,
-            rightMaskWidth:   analysis.right_screen?.bbox.width ?? 0,
-            rightMaskHeight:  analysis.right_screen?.bbox.height ?? 0,
-          }
-        });
+          // Update the hall record with AI-detected coordinates
+          await prisma.venueHall.update({
+            where: { id: hall.id },
+            data: {
+              centerMaskX:      analysis.main_screen.bbox.x,
+              centerMaskY:      analysis.main_screen.bbox.y,
+              centerMaskWidth:  analysis.main_screen.bbox.width,
+              centerMaskHeight: analysis.main_screen.bbox.height,
+              leftMaskX:        analysis.left_screen?.bbox.x ?? 0,
+              leftMaskY:        analysis.left_screen?.bbox.y ?? 0,
+              leftMaskWidth:    analysis.left_screen?.bbox.width ?? 0,
+              leftMaskHeight:   analysis.left_screen?.bbox.height ?? 0,
+              rightMaskX:       analysis.right_screen?.bbox.x ?? 0,
+              rightMaskY:       analysis.right_screen?.bbox.y ?? 0,
+              rightMaskWidth:   analysis.right_screen?.bbox.width ?? 0,
+              rightMaskHeight:  analysis.right_screen?.bbox.height ?? 0,
+            }
+          });
+        } else {
+          // Build template JSON from manual coordinates
+          const getPoly = (bb: { x: number, y: number, width: number, height: number }, skew = 0) => [
+            [bb.x, bb.y],
+            [bb.x + bb.width, bb.y + skew],
+            [bb.x + bb.width, bb.y + bb.height + skew],
+            [bb.x, bb.y + bb.height]
+          ] as [number, number][];
+
+          const mainBbox = { x: centerMaskX, y: centerMaskY, width: centerMaskWidth, height: centerMaskHeight };
+          const leftBbox = { x: leftMaskX, y: leftMaskY, width: leftMaskWidth, height: leftMaskHeight };
+          const rightBbox = { x: rightMaskX, y: rightMaskY, width: rightMaskWidth, height: rightMaskHeight };
+
+          analysis = {
+            main_screen: {
+              polygon: getPoly(mainBbox, 0),
+              bbox: mainBbox,
+              safe_area: {
+                x: Math.round(mainBbox.x + mainBbox.width * 0.08),
+                y: Math.round(mainBbox.y + mainBbox.height * 0.08),
+                width: Math.round(mainBbox.width * 0.84),
+                height: Math.round(mainBbox.height * 0.84)
+              }
+            },
+            left_screen: leftMaskWidth > 0 ? {
+              polygon: getPoly(leftBbox, 3.5),
+              bbox: leftBbox,
+              safe_area: {
+                x: Math.round(leftBbox.x + leftBbox.width * 0.08),
+                y: Math.round(leftBbox.y + leftBbox.height * 0.08),
+                width: Math.round(leftBbox.width * 0.84),
+                height: Math.round(leftBbox.height * 0.84)
+              }
+            } : null,
+            right_screen: rightMaskWidth > 0 ? {
+              polygon: getPoly(rightBbox, -3.5),
+              bbox: rightBbox,
+              safe_area: {
+                x: Math.round(rightBbox.x + rightBbox.width * 0.08),
+                y: Math.round(rightBbox.y + rightBbox.height * 0.08),
+                width: Math.round(rightBbox.width * 0.84),
+                height: Math.round(rightBbox.height * 0.84)
+              }
+            } : null
+          };
+          await saveStageTemplateJson(hall.id, analysis);
+        }
       } catch (analyzeErr) {
         console.error('Error analyzing stage coordinates during POST:', analyzeErr);
       }
@@ -216,6 +266,8 @@ export async function PUT(request: Request) {
     if (refPhotoUrl1) updateData.refPhotoUrl1 = refPhotoUrl1;
     if (refPhotoUrl2) updateData.refPhotoUrl2 = refPhotoUrl2;
 
+    // Run dynamic stage analysis on uploaded hall photo if coordinates are not manually configured
+    const isManualConfig = centerMaskWidth > 0 || leftMaskWidth > 0 || rightMaskWidth > 0;
     if (baseImageUrl) {
       try {
         const { analyzeStageLayout, saveStageTemplateJson } = await import('@/lib/stage-analyzer');
@@ -226,22 +278,70 @@ export async function PUT(request: Request) {
         const W = metadata.width || 1200;
         const H = metadata.height || 800;
 
-        const analysis = await analyzeStageLayout(imageBuffer, W, H);
-        await saveStageTemplateJson(parseInt(id, 10), analysis);
+        let analysis;
+        if (!isManualConfig) {
+          analysis = await analyzeStageLayout(imageBuffer, W, H);
 
-        // Update with AI-detected coordinates
-        updateData.centerMaskX      = analysis.main_screen.bbox.x;
-        updateData.centerMaskY      = analysis.main_screen.bbox.y;
-        updateData.centerMaskWidth  = analysis.main_screen.bbox.width;
-        updateData.centerMaskHeight = analysis.main_screen.bbox.height;
-        updateData.leftMaskX        = analysis.left_screen?.bbox.x ?? 0;
-        updateData.leftMaskY        = analysis.left_screen?.bbox.y ?? 0;
-        updateData.leftMaskWidth    = analysis.left_screen?.bbox.width ?? 0;
-        updateData.leftMaskHeight   = analysis.left_screen?.bbox.height ?? 0;
-        updateData.rightMaskX       = analysis.right_screen?.bbox.x ?? 0;
-        updateData.rightMaskY       = analysis.right_screen?.bbox.y ?? 0;
-        updateData.rightMaskWidth   = analysis.right_screen?.bbox.width ?? 0;
-        updateData.rightMaskHeight  = analysis.right_screen?.bbox.height ?? 0;
+          // Update with AI-detected coordinates
+          updateData.centerMaskX      = analysis.main_screen.bbox.x;
+          updateData.centerMaskY      = analysis.main_screen.bbox.y;
+          updateData.centerMaskWidth  = analysis.main_screen.bbox.width;
+          updateData.centerMaskHeight = analysis.main_screen.bbox.height;
+          updateData.leftMaskX        = analysis.left_screen?.bbox.x ?? 0;
+          updateData.leftMaskY        = analysis.left_screen?.bbox.y ?? 0;
+          updateData.leftMaskWidth    = analysis.left_screen?.bbox.width ?? 0;
+          updateData.leftMaskHeight   = analysis.left_screen?.bbox.height ?? 0;
+          updateData.rightMaskX       = analysis.right_screen?.bbox.x ?? 0;
+          updateData.rightMaskY       = analysis.right_screen?.bbox.y ?? 0;
+          updateData.rightMaskWidth   = analysis.right_screen?.bbox.width ?? 0;
+          updateData.rightMaskHeight  = analysis.right_screen?.bbox.height ?? 0;
+        } else {
+          // Build template JSON from manual coordinates
+          const getPoly = (bb: { x: number, y: number, width: number, height: number }, skew = 0) => [
+            [bb.x, bb.y],
+            [bb.x + bb.width, bb.y + skew],
+            [bb.x + bb.width, bb.y + bb.height + skew],
+            [bb.x, bb.y + bb.height]
+          ] as [number, number][];
+
+          const mainBbox = { x: centerMaskX, y: centerMaskY, width: centerMaskWidth, height: centerMaskHeight };
+          const leftBbox = { x: leftMaskX, y: leftMaskY, width: leftMaskWidth, height: leftMaskHeight };
+          const rightBbox = { x: rightMaskX, y: rightMaskY, width: rightMaskWidth, height: rightMaskHeight };
+
+          analysis = {
+            main_screen: {
+              polygon: getPoly(mainBbox, 0),
+              bbox: mainBbox,
+              safe_area: {
+                x: Math.round(mainBbox.x + mainBbox.width * 0.08),
+                y: Math.round(mainBbox.y + mainBbox.height * 0.08),
+                width: Math.round(mainBbox.width * 0.84),
+                height: Math.round(mainBbox.height * 0.84)
+              }
+            },
+            left_screen: leftMaskWidth > 0 ? {
+              polygon: getPoly(leftBbox, 3.5),
+              bbox: leftBbox,
+              safe_area: {
+                x: Math.round(leftBbox.x + leftBbox.width * 0.08),
+                y: Math.round(leftBbox.y + leftBbox.height * 0.08),
+                width: Math.round(leftBbox.width * 0.84),
+                height: Math.round(leftBbox.height * 0.84)
+              }
+            } : null,
+            right_screen: rightMaskWidth > 0 ? {
+              polygon: getPoly(rightBbox, -3.5),
+              bbox: rightBbox,
+              safe_area: {
+                x: Math.round(rightBbox.x + rightBbox.width * 0.08),
+                y: Math.round(rightBbox.y + rightBbox.height * 0.08),
+                width: Math.round(rightBbox.width * 0.84),
+                height: Math.round(rightBbox.height * 0.84)
+              }
+            } : null
+          };
+        }
+        await saveStageTemplateJson(parseInt(id, 10), analysis);
       } catch (analyzeErr) {
         console.error('Error analyzing stage coordinates during PUT:', analyzeErr);
       }
