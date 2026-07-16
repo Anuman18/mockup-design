@@ -212,6 +212,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const hallId        = formData.get('hallId') as string;
+    const templateIdStr = formData.get('templateId') as string;
     const eventName     = formData.get('eventName') as string;
     const eventSubtitle  = (formData.get('eventSubtitle') || '') as string;
     const eventDate     = (formData.get('eventDate') || '') as string;
@@ -221,15 +222,14 @@ export async function POST(request: Request) {
     const screenTheme   = (formData.get('screenTheme') || 'light') as 'light' | 'dark';
     const wingDisplayMode = (formData.get('wingDisplayMode') || 'mirror') as 'mirror' | 'extended';
     const logosJson     = formData.get('logos') as string;
+    const assetUrlsJson  = formData.get('assetUrls') as string;
 
-    if (!hallId || isNaN(parseInt(hallId, 10))) {
-      return NextResponse.json({ error: 'Valid hallId is required' }, { status: 400 });
-    }
     if (!eventName?.trim()) {
       return NextResponse.json({ error: 'Event Title is required' }, { status: 400 });
     }
 
     const logos: string[] = logosJson ? JSON.parse(logosJson) : [];
+    const assetUrls: string[] = assetUrlsJson ? JSON.parse(assetUrlsJson) : [];
 
     // Parse all custom uploaded logo files (customLogo_0, customLogo_1...)
     const customLogoBuffers: Buffer[] = [];
@@ -240,26 +240,86 @@ export async function POST(request: Request) {
       }
     }
 
+    // Load pre-uploaded assets by URL
+    const { readFile } = await import('fs/promises');
+    const { join } = await import('path');
+    for (const url of assetUrls) {
+      if (url.startsWith('/uploads/assets/')) {
+        const filePath = join(process.cwd(), 'public', url);
+        try {
+          const buf = await readFile(filePath);
+          customLogoBuffers.push(buf);
+        } catch (e) {
+          console.error(`Failed to read asset logo from path ${filePath}:`, e);
+        }
+      }
+    }
+
     const hasLogos = customLogoBuffers.length > 0 || logos.length > 0;
 
-    // Fetch venue hall
-    const hall = await prisma.venueHall.findUnique({
-      where: { id: parseInt(hallId, 10) },
-    });
-    if (!hall) {
-      return NextResponse.json({ error: 'Hall not found' }, { status: 404 });
+    // Fetch template or venue hall configuration
+    let centerMaskX = 0, centerMaskY = 0, centerMaskWidth = 0, centerMaskHeight = 0;
+    let leftMaskX = 0, leftMaskY = 0, leftMaskWidth = 0, leftMaskHeight = 0;
+    let rightMaskX = 0, rightMaskY = 0, rightMaskWidth = 0, rightMaskHeight = 0;
+    let baseImageUrl = '';
+    let hallName = 'Custom Workspace';
+
+    if (templateIdStr && !isNaN(parseInt(templateIdStr, 10))) {
+      const template = await prisma.template.findUnique({
+        where: { id: parseInt(templateIdStr, 10) }
+      });
+      if (!template) {
+        return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+      }
+      baseImageUrl = template.imageUrl;
+      centerMaskX = template.centerMaskX;
+      centerMaskY = template.centerMaskY;
+      centerMaskWidth = template.centerMaskWidth;
+      centerMaskHeight = template.centerMaskHeight;
+      leftMaskX = template.leftMaskX;
+      leftMaskY = template.leftMaskY;
+      leftMaskWidth = template.leftMaskWidth;
+      leftMaskHeight = template.leftMaskHeight;
+      rightMaskX = template.rightMaskX;
+      rightMaskY = template.rightMaskY;
+      rightMaskWidth = template.rightMaskWidth;
+      rightMaskHeight = template.rightMaskHeight;
+      hallName = template.name;
+    } else {
+      if (!hallId || isNaN(parseInt(hallId, 10))) {
+        return NextResponse.json({ error: 'Valid hallId or templateId is required' }, { status: 400 });
+      }
+      const hall = await prisma.venueHall.findUnique({
+        where: { id: parseInt(hallId, 10) },
+      });
+      if (!hall) {
+        return NextResponse.json({ error: 'Hall not found' }, { status: 404 });
+      }
+      baseImageUrl = hall.baseImageUrl || '';
+      centerMaskX = hall.centerMaskX;
+      centerMaskY = hall.centerMaskY;
+      centerMaskWidth = hall.centerMaskWidth;
+      centerMaskHeight = hall.centerMaskHeight;
+      leftMaskX = hall.leftMaskX;
+      leftMaskY = hall.leftMaskY;
+      leftMaskWidth = hall.leftMaskWidth;
+      leftMaskHeight = hall.leftMaskHeight;
+      rightMaskX = hall.rightMaskX;
+      rightMaskY = hall.rightMaskY;
+      rightMaskWidth = hall.rightMaskWidth;
+      rightMaskHeight = hall.rightMaskHeight;
+      hallName = hall.name;
     }
-    if (!hall.baseImageUrl) {
-      return NextResponse.json({ error: 'This hall has no base image configured.' }, { status: 422 });
+
+    if (!baseImageUrl) {
+      return NextResponse.json({ error: 'This template/hall has no base image configured.' }, { status: 422 });
     }
 
     // Load base venue image
     let baseImageBuffer: Buffer;
-    const imageUrl = hall.baseImageUrl;
+    const imageUrl = baseImageUrl;
 
     if (imageUrl.startsWith('/')) {
-      const { readFile } = await import('fs/promises');
-      const { join } = await import('path');
       baseImageBuffer = await readFile(join(process.cwd(), 'public', imageUrl));
     } else {
       const response = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
@@ -402,34 +462,34 @@ export async function POST(request: Request) {
 
     // Composite Center
     await addScreenComposite(
-      hall.centerMaskX,
-      hall.centerMaskY,
-      hall.centerMaskWidth,
-      hall.centerMaskHeight,
+      centerMaskX,
+      centerMaskY,
+      centerMaskWidth,
+      centerMaskHeight,
       'center'
     );
 
     // Composite Left & Right Wings
     if (screenConfig === 'wings' || screenConfig === 'all') {
       await addScreenComposite(
-        hall.leftMaskX,
-        hall.leftMaskY,
-        hall.leftMaskWidth,
-        hall.leftMaskHeight,
+        leftMaskX,
+        leftMaskY,
+        leftMaskWidth,
+        leftMaskHeight,
         'left'
       );
       await addScreenComposite(
-        hall.rightMaskX,
-        hall.rightMaskY,
-        hall.rightMaskWidth,
-        hall.rightMaskHeight,
+        rightMaskX,
+        rightMaskY,
+        rightMaskWidth,
+        rightMaskHeight,
         'right'
       );
     }
 
     if (composites.length === 0) {
       return NextResponse.json({
-        error: `No screen coordinates defined for this hall. Please edit coordinates in the Admin panel.`
+        error: `No screen coordinates defined for this template/hall. Please edit coordinates in the Admin panel.`
       }, { status: 422 });
     }
 
@@ -443,7 +503,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       imageBase64: `data:image/png;base64,${base64}`,
       mimeType: 'image/png',
-      hallName: hall.name,
+      hallName,
       eventName: eventName,
       screensProcessed: composites.length,
     });

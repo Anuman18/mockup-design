@@ -1,13 +1,15 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Building2, Layers, MapPin, Plus, Trash2, Loader2, Check,
   Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings,
   Map as MapIcon, Upload, Users, ShieldAlert, Key, Lock, Unlock, LogOut,
   CheckCircle, AlertCircle, Search, Filter, ShieldCheck, Sparkles,
   Calendar, Clock, User, Briefcase, PlusCircle, Layout, FileText,
-  DollarSign, Activity, FileSpreadsheet, ListTodo, Clipboard, HelpCircle
+  DollarSign, Activity, FileSpreadsheet, ListTodo, Clipboard, HelpCircle,
+  Undo, Redo, ZoomIn, ZoomOut, Maximize, FileImage, Eye, EyeOff, CheckSquare,
+  Columns, ArrowLeftRight, Copy, Share, ChevronRight, Download
 } from 'lucide-react';
 import AdminBoundingBox from '@/components/AdminBoundingBox';
 import Link from 'next/link';
@@ -188,6 +190,62 @@ export default function AdminDashboard() {
     name: '', purpose: '', capacity: '', floorNumber: '', area: '', specialNotes: ''
   });
 
+  // ─── Module 3 AI Mockup Workspace State ──────────────────────────────────
+  const [mockupsList, setMockupsList] = useState<any[]>([]);
+  const [assetsList, setAssetsList] = useState<any[]>([]);
+  const [templatesList, setTemplatesList] = useState<any[]>([]);
+  
+  // Workspace UI Toggles
+  const [showWorkspace, setShowWorkspace] = useState(false);
+  const [showMockupModal, setShowMockupModal] = useState(false);
+  const [activeMockup, setActiveMockup] = useState<any | null>(null);
+  const [activeVersion, setActiveVersion] = useState<any | null>(null);
+
+  // Form mockups
+  const [mockupForm, setMockupForm] = useState({
+    name: '', venueId: '', hallId: '', stageType: 'Main Stage', category: 'Hotel', notes: '', designer: ''
+  });
+
+  // Left Sidebar and Right panel tabs
+  const [activeLeftTab, setActiveLeftTab] = useState<'layers' | 'brand_assets' | 'templates'>('layers');
+  const [activeRightTab, setActiveRightTab] = useState<'props' | 'versions'>('props');
+
+  // Canvas config
+  const [editorZoom, setEditorZoom] = useState(85);
+  const [editorPan, setEditorPan] = useState({ x: 0, y: 0 });
+  const [editorFullscreen, setEditorFullscreen] = useState(false);
+  const [safeZonesVisible, setSafeZonesVisible] = useState(true);
+
+  // Layers visible
+  const [layersVisibility, setLayersVisibility] = useState({
+    backdrop: true, screens: true, text: true, logos: true
+  });
+
+  // Preview & rendering Base64
+  const [renderingPreview, setRenderingPreview] = useState(false);
+  const [renderedImage, setRenderedImage] = useState('');
+
+  // Active configuration mapping (autofilled from active mockup version config)
+  const [workspaceConfig, setWorkspaceConfig] = useState({
+    title: '', subtitle: '', dateText: '', venueText: '', footerText: 'Powered by Eventelligence',
+    theme: 'dark' as 'light' | 'dark',
+    screenConfig: 'all' as 'center' | 'wings' | 'all',
+    wingDisplayMode: 'mirror' as 'mirror' | 'extended',
+    logos: [] as string[],
+    assetUrls: [] as string[]
+  });
+
+  // Undo/Redo stacks
+  const [undoStack, setUndoStack] = useState<any[]>([]);
+  const [redoStack, setRedoStack] = useState<any[]>([]);
+
+  // Split-screen Compare states
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareLeftVersion, setCompareLeftVersion] = useState<any | null>(null);
+  const [compareRightVersion, setCompareRightVersion] = useState<any | null>(null);
+  const [compareLeftImage, setCompareLeftImage] = useState('');
+  const [compareRightImage, setCompareRightImage] = useState('');
+
   // ─── Load Current Logged-in Profile ───────────────────────────────────────
   const fetchCurrentUser = async () => {
     try {
@@ -275,6 +333,71 @@ export default function AdminDashboard() {
     }
   };
 
+  // ─── Module 3 API Operations ─────────────────────────────────────────────
+  const fetchMockups = async (eventId: number) => {
+    try {
+      const res = await fetch(`/api/mockups?eventId=${eventId}`);
+      const data = await res.json();
+      if (res.ok) {
+        setMockupsList(data);
+      }
+    } catch (err) {
+      console.error('Error fetching mockups list:', err);
+    }
+  };
+
+  const fetchAssets = async (eventId: number) => {
+    try {
+      const res = await fetch(`/api/assets?eventId=${eventId}`);
+      const data = await res.json();
+      if (res.ok) {
+        setAssetsList(data);
+      }
+    } catch (err) {
+      console.error('Error fetching brand assets list:', err);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const res = await fetch('/api/templates');
+      const data = await res.json();
+      if (res.ok) {
+        setTemplatesList(data);
+      }
+    } catch (err) {
+      console.error('Error fetching templates library:', err);
+    }
+  };
+
+  const handleUploadAssetFile = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedEvent) return;
+
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('eventId', String(selectedEvent.id));
+      fd.append('type', type);
+      fd.append('file', file);
+
+      const res = await fetch('/api/assets', {
+        method: 'POST',
+        body: fd
+      });
+      if (res.ok) {
+        show('Brand asset uploaded successfully!');
+        fetchAssets(selectedEvent.id);
+      } else {
+        const err = await res.json();
+        show(err.error || 'Failed to upload asset', 'error');
+      }
+    } catch (err) {
+      show('Error uploading brand asset file', 'error');
+    }
+    setSaving(false);
+  };
+
   // ─── Fetch All Layout Settings ────────────────────────────────────────────
   const fetchAll = async () => {
     setLoading(true);
@@ -311,6 +434,15 @@ export default function AdminDashboard() {
       fetchEvents();
     }
   }, [activeTab, userSearch, userRoleFilter, userStatusFilter, eventSearch, eventStatusFilter, eventCategoryFilter]);
+
+  // Hook details fetches on event selection
+  useEffect(() => {
+    if (selectedEvent) {
+      fetchMockups(selectedEvent.id);
+      fetchAssets(selectedEvent.id);
+      fetchTemplates();
+    }
+  }, [selectedEvent]);
 
   // ─── User Add/Edit Handlers ────────────────────────────────────────────────
   const handleAddUser = async (e: React.FormEvent) => {
@@ -553,6 +685,283 @@ export default function AdminDashboard() {
     }
   };
 
+  // ─── Module 3 Mockups Operations ─────────────────────────────────────────
+  const handleCreateMockupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEvent) return;
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/mockups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...mockupForm,
+          eventId: selectedEvent.id,
+          venueId: parseInt(mockupForm.venueId, 10),
+          hallId: parseInt(mockupForm.hallId, 10)
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show('Stage Mockup workspace initialized!');
+        setShowMockupModal(false);
+        setMockupForm({
+          name: '', venueId: '', hallId: '', stageType: 'Main Stage', category: 'Hotel', notes: '', designer: currentUser?.name || 'Designer'
+        });
+        fetchMockups(selectedEvent.id);
+      } else {
+        show(data.error || 'Failed to initialize mockup', 'error');
+      }
+    } catch (err) {
+      show('Error creating stage mockup configuration', 'error');
+    }
+    setSaving(false);
+  };
+
+  const handleUpdateMockupStatus = async (id: number, nextStatus: string) => {
+    try {
+      const res = await fetch(`/api/mockups/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show(`Mockup status updated to ${nextStatus}`);
+        if (activeMockup && activeMockup.id === id) {
+          setActiveMockup(data);
+        }
+        if (selectedEvent) {
+          fetchMockups(selectedEvent.id);
+        }
+      }
+    } catch (err) {
+      show('Error updating mockup status', 'error');
+    }
+  };
+
+  const handleDeleteMockup = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this stage mockup? All versions and histories will be permanently removed!')) return;
+    try {
+      const res = await fetch(`/api/mockups/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        show('Stage mockup deleted successfully');
+        if (selectedEvent) fetchMockups(selectedEvent.id);
+      } else {
+        const err = await res.json();
+        show(err.error || 'Failed to delete mockup', 'error');
+      }
+    } catch (err) {
+      show('Error deleting mockup', 'error');
+    }
+  };
+
+  // ─── Composite Rendering Preview ──────────────────────────────────────────
+  const generateWorkspacePreview = async (configOverride?: typeof workspaceConfig) => {
+    if (!activeMockup) return;
+    setRenderingPreview(true);
+    const activeConfig = configOverride || workspaceConfig;
+
+    try {
+      const fd = new FormData();
+      fd.append('eventName', activeConfig.title);
+      fd.append('eventSubtitle', activeConfig.subtitle);
+      fd.append('eventDate', activeConfig.dateText);
+      fd.append('eventVenue', activeConfig.venueText);
+      fd.append('footerText', activeConfig.footerText);
+      fd.append('screenTheme', activeConfig.theme);
+      fd.append('screenConfig', activeConfig.screenConfig);
+      fd.append('wingDisplayMode', activeConfig.wingDisplayMode);
+      fd.append('logos', JSON.stringify(activeConfig.logos));
+      fd.append('assetUrls', JSON.stringify(activeConfig.assetUrls));
+
+      // Find standard Hall mapping if there is one matching coordinates,
+      // otherwise check if mockup was created using a template backdrop.
+      let standardHallId = '';
+      const matchedStandardHall = halls.find(h => h.name.toLowerCase() === activeMockup.hall?.name?.toLowerCase());
+      if (matchedStandardHall) {
+        standardHallId = String(matchedStandardHall.id);
+      }
+
+      if (standardHallId) {
+        fd.append('hallId', standardHallId);
+      } else {
+        // Fall back to templates table (seeded grand ballroom)
+        fd.append('templateId', '1');
+      }
+
+      const res = await fetch('/api/generate-visualization', {
+        method: 'POST',
+        body: fd
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRenderedImage(data.imageBase64);
+      } else {
+        show(data.error || 'Failed to render stage screen layout', 'error');
+      }
+    } catch (err) {
+      console.error('Error generating mockup composite rendering:', err);
+    }
+    setRenderingPreview(false);
+  };
+
+  const openMockupWorkspace = async (mockup: any) => {
+    setActiveMockup(mockup);
+    
+    // Load latest version config
+    if (mockup.versions && mockup.versions.length > 0) {
+      const latestVer = mockup.versions[0];
+      try {
+        const parsedConfig = JSON.parse(latestVer.config);
+        setWorkspaceConfig(parsedConfig);
+        setRenderedImage(latestVer.imageUrl || '');
+        setActiveVersion(latestVer);
+      } catch (e) {
+        console.error('Failed to parse version config:', e);
+      }
+    } else {
+      // Setup initial defaults
+      const initialConfig = {
+        title: selectedEvent?.name || 'Corporate Summit 2026',
+        subtitle: selectedEvent?.tagline || 'Designing the Future',
+        dateText: selectedEvent ? new Date(selectedEvent.startDate).toLocaleDateString() : '',
+        venueText: selectedEvent?.venueName || '',
+        footerText: 'Powered by Eventelligence',
+        theme: 'dark' as 'light' | 'dark',
+        screenConfig: 'all' as 'center' | 'wings' | 'all',
+        wingDisplayMode: 'mirror' as 'mirror' | 'extended',
+        logos: [] as string[],
+        assetUrls: [] as string[]
+      };
+      setWorkspaceConfig(initialConfig);
+      setRenderedImage('');
+    }
+
+    setUndoStack([]);
+    setRedoStack([]);
+    setCompareMode(false);
+    setShowWorkspace(true);
+  };
+
+  // Safe configuration updating with undo/redo stack
+  const updateWorkspaceConfig = (newConfig: Partial<typeof workspaceConfig>) => {
+    setWorkspaceConfig(prev => {
+      const next = { ...prev, ...newConfig };
+      setUndoStack(u => [...u, prev]);
+      setRedoStack([]);
+      // Render composite preview on changes
+      generateWorkspacePreview(next);
+      return next;
+    });
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    setUndoStack(u => u.slice(0, -1));
+    setRedoStack(r => [...r, workspaceConfig]);
+    setWorkspaceConfig(prev);
+    generateWorkspacePreview(prev);
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack(r => r.slice(0, -1));
+    setUndoStack(u => [...u, workspaceConfig]);
+    setWorkspaceConfig(next);
+    generateWorkspacePreview(next);
+  };
+
+  const handleSaveVersion = async () => {
+    if (!activeMockup) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/mockups/${activeMockup.id}/versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: JSON.stringify(workspaceConfig),
+          imageUrl: renderedImage
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show(`Mockup saved as Version ${data.versionNumber}!`);
+        // Refresh active mockup details
+        const updatedRes = await fetch(`/api/mockups/${activeMockup.id}`);
+        const updatedData = await updatedRes.json();
+        if (updatedRes.ok) {
+          setActiveMockup(updatedData);
+          setActiveVersion(data);
+        }
+        if (selectedEvent) {
+          fetchMockups(selectedEvent.id);
+        }
+      } else {
+        show(data.error || 'Failed to save version', 'error');
+      }
+    } catch (err) {
+      show('Error saving version history', 'error');
+    }
+    setSaving(false);
+  };
+
+  const handleRestoreVersion = async (verNum: number) => {
+    if (!activeMockup) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/mockups/${activeMockup.id}/versions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          restoreFromVersion: verNum
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show(`Restored workspace configuration to Version ${verNum}!`);
+        const parsedConfig = JSON.parse(data.config);
+        setWorkspaceConfig(parsedConfig);
+        generateWorkspacePreview(parsedConfig);
+        setActiveVersion(data);
+        
+        // Refresh active mockup detail
+        const updatedRes = await fetch(`/api/mockups/${activeMockup.id}`);
+        const updatedData = await updatedRes.json();
+        if (updatedRes.ok) {
+          setActiveMockup(updatedData);
+        }
+      } else {
+        show(data.error || 'Failed to restore version', 'error');
+      }
+    } catch (err) {
+      show('Error restoring version history', 'error');
+    }
+    setSaving(false);
+  };
+  
+  const startCompareMode = (vLeft: any, vRight: any) => {
+    setCompareLeftVersion(vLeft);
+    setCompareRightVersion(vRight);
+    setCompareLeftImage(vLeft.imageUrl || '');
+    setCompareRightImage(vRight.imageUrl || '');
+    setCompareMode(true);
+  };
+
+  const handleExportPNG = () => {
+    if (!renderedImage) return show('No composited stage image to export.', 'error');
+    const link = document.createElement('a');
+    link.href = renderedImage;
+    link.download = `${activeMockup?.name || 'Stage_Mockup'}_V${activeVersion?.versionNumber || 1}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    show('Mockup exported successfully.');
+  };
+
   // Helper: dynamic category gradient generator for banners
   const getBannerGradient = (category: string) => {
     switch (category) {
@@ -577,8 +986,11 @@ export default function AdminDashboard() {
       case 'Working': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
       case 'Planning': return 'bg-amber-50 text-amber-700 border-amber-200';
       case 'Completed': return 'bg-violet-50 text-violet-700 border-violet-200';
-      case 'Draft': return 'bg-slate-100 text-slate-600 border-slate-200';
+      case 'Draft': return 'bg-slate-100 text-slate-605 border-slate-200';
       case 'Cancelled': return 'bg-rose-50 text-rose-700 border-rose-200';
+      case 'Review': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Sent To Client': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      case 'Final': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       default: return 'bg-zinc-50 text-zinc-650 border-zinc-200';
     }
   };
@@ -834,7 +1246,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans flex">
+    <div className="min-h-screen bg-slate-50 font-sans flex relative overflow-x-hidden">
       {/* Toast notifications */}
       {toast && (
         <div className={`fixed top-5 right-5 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all ${toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-rose-600 text-white'}`}>
@@ -844,7 +1256,7 @@ export default function AdminDashboard() {
       )}
 
       {/* LEFT SIDEBAR navigation */}
-      <aside className="w-64 bg-slate-950 text-slate-450 border-r border-slate-800/80 flex flex-col shrink-0">
+      <aside className="w-64 bg-slate-955 text-slate-450 border-r border-slate-800/80 flex flex-col shrink-0">
         {/* Brand logo & header */}
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-800/30">
@@ -1103,10 +1515,10 @@ export default function AdminDashboard() {
                                 </span>
                               </div>
                               <h3 className="font-extrabold text-slate-800 text-base leading-snug line-clamp-1">{e.name}</h3>
-                              <p className="text-xs text-slate-450 font-semibold line-clamp-1 mt-0.5">{e.tagline}</p>
+                              <p className="text-xs text-slate-455 font-semibold line-clamp-1 mt-0.5">{e.tagline}</p>
                             </div>
 
-                            <p className="text-xs text-slate-450 line-clamp-2 leading-relaxed flex-1">{e.description}</p>
+                            <p className="text-xs text-slate-455 line-clamp-2 leading-relaxed flex-1">{e.description}</p>
 
                             <div className="border-t border-slate-100 pt-3 space-y-2">
                               <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
@@ -1402,7 +1814,6 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               onClick={() => {
-                                // Add verification steps
                                 if (wizardStep === 1 && (!wizardForm.name.trim() || !wizardForm.clientName.trim())) {
                                   return show('Event Name and Client Name are required', 'error');
                                 }
@@ -1606,6 +2017,87 @@ export default function AdminDashboard() {
                             </div>
                           </div>
 
+                          {/* ─── MODULE 3: AI Stage Mockup Catalog List ────────────────── */}
+                          <div className="space-y-4 border-t border-slate-100 pt-6">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <Sparkles className="w-4 h-4 text-blue-500" /> AI Stage Mockups Workspace ({mockupsList.length})
+                              </h4>
+                              <button
+                                onClick={() => {
+                                  // Pre-fill fields
+                                  const primaryVenue = selectedEvent.venues[0];
+                                  const primaryHall = primaryVenue?.halls[0];
+                                  setMockupForm({
+                                    name: '',
+                                    venueId: primaryVenue ? String(primaryVenue.id) : '',
+                                    hallId: primaryHall ? String(primaryHall.id) : '',
+                                    stageType: 'Main Stage',
+                                    category: 'Hotel',
+                                    notes: '',
+                                    designer: currentUser?.name || 'Lead Designer'
+                                  });
+                                  setShowMockupModal(true);
+                                }}
+                                className="px-3 py-1.5 bg-blue-650 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold shadow-sm flex items-center gap-1 transition"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Initialize Mockup Workspace
+                              </button>
+                            </div>
+
+                            {mockupsList.length === 0 ? (
+                              <div className="bg-slate-50/50 border border-slate-200/60 p-8 rounded-2xl text-center space-y-2">
+                                <p className="text-xs text-slate-400 font-semibold italic">No stage mockups created for this event conceptualization.</p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {mockupsList.map(mockup => {
+                                  const latestVer = mockup.versions && mockup.versions.length > 0 ? mockup.versions[0] : null;
+                                  return (
+                                    <div key={mockup.id} className="bg-white border border-slate-250/70 p-5 rounded-2xl shadow-sm hover:border-slate-350 hover:shadow-md transition-all flex gap-4">
+                                      {/* Thumbnail rendering base64 or placeholder */}
+                                      {latestVer && latestVer.imageUrl ? (
+                                        <img src={latestVer.imageUrl} alt={mockup.name} className="w-24 h-16 object-cover rounded-xl border bg-slate-55 shadow-inner shrink-0" />
+                                      ) : (
+                                        <div className="w-24 h-16 bg-slate-100 rounded-xl border flex items-center justify-center text-slate-400 shrink-0 select-none">
+                                          <FileImage className="w-6 h-6" />
+                                        </div>
+                                      )}
+                                      <div className="min-w-0 flex-1 flex flex-col justify-between">
+                                        <div>
+                                          <div className="flex items-center justify-between gap-1.5 mb-1">
+                                            <span className="text-[8px] font-extrabold uppercase tracking-widest text-slate-400">{mockup.stageType}</span>
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${getStatusStyle(mockup.status)}`}>{mockup.status}</span>
+                                          </div>
+                                          <h4 className="font-extrabold text-slate-800 text-sm leading-snug truncate">{mockup.name}</h4>
+                                          <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">{mockup.venue?.name} · {mockup.hall?.name}</p>
+                                        </div>
+
+                                        <div className="flex items-center justify-between gap-2 border-t border-slate-50 pt-2 mt-2">
+                                          <span className="text-[9px] font-bold text-slate-400">Ver: {latestVer ? latestVer.versionNumber : 1} · {mockup.designer}</span>
+                                          <div className="flex gap-1.5">
+                                            <button
+                                              onClick={() => openMockupWorkspace(mockup)}
+                                              className="px-2.5 py-1 bg-slate-900 text-white hover:bg-slate-850 rounded-lg text-[10px] font-bold transition flex items-center gap-0.5"
+                                            >
+                                              <Settings className="w-3 h-3" /> Edit Mockup
+                                            </button>
+                                            <button
+                                              onClick={() => handleDeleteMockup(mockup.id)}
+                                              className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg transition"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
                           {/* Quick Action Buttons to subsequent modules */}
                           <div className="border-t border-slate-100 pt-6">
                             <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4">Event Operations & visualizer</h4>
@@ -1652,6 +2144,645 @@ export default function AdminDashboard() {
                           </div>
 
                         </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Create Mockup Modal Wizard */}
+                  {showMockupModal && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-scale-in">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <h3 className="font-extrabold text-slate-800 text-base">Initialize AI Mockup Workspace</h3>
+                          <button onClick={() => setShowMockupModal(false)} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        <form onSubmit={handleCreateMockupSubmit} className="space-y-4">
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 block mb-1">Mockup Project Name</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="e.g. Center Backdrop Render - V1"
+                              value={mockupForm.name}
+                              onChange={e => setMockupForm(f => ({ ...f, name: e.target.value }))}
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-semibold"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 block mb-1">Assigned Venue</label>
+                              <select
+                                value={mockupForm.venueId}
+                                onChange={e => {
+                                  const selectedVId = e.target.value;
+                                  const matchedVenue = selectedEvent.venues.find((v: any) => v.id === parseInt(selectedVId, 10));
+                                  const nextHallId = matchedVenue && matchedVenue.halls.length > 0 ? String(matchedVenue.halls[0].id) : '';
+                                  setMockupForm(f => ({ ...f, venueId: selectedVId, hallId: nextHallId }));
+                                }}
+                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700"
+                              >
+                                <option value="">Select Venue</option>
+                                {selectedEvent.venues && selectedEvent.venues.map((v: any) => (
+                                  <option key={v.id} value={v.id}>{v.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 block mb-1">Select Conference Hall</label>
+                              <select
+                                value={mockupForm.hallId}
+                                onChange={e => setMockupForm(f => ({ ...f, hallId: e.target.value }))}
+                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700"
+                              >
+                                <option value="">Select Hall</option>
+                                {selectedEvent.venues && selectedEvent.venues
+                                  .find((v: any) => String(v.id) === mockupForm.venueId)
+                                  ?.halls.map((h: any) => (
+                                    <option key={h.id} value={h.id}>{h.name}</option>
+                                  ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 block mb-1">Stage Type</label>
+                              <select
+                                value={mockupForm.stageType}
+                                onChange={e => setMockupForm(f => ({ ...f, stageType: e.target.value }))}
+                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700"
+                              >
+                                {['Main Stage', 'Conference', 'Exhibition', 'Product Launch', 'Award Ceremony', 'Wedding', 'Political Rally', 'Government Event', 'Press Conference', 'Indoor', 'Outdoor', 'Custom'].map(t => (
+                                  <option key={t} value={t}>{t}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="text-xs font-bold text-slate-500 block mb-1">Template Category</label>
+                              <select
+                                value={mockupForm.category}
+                                onChange={e => setMockupForm(f => ({ ...f, category: e.target.value }))}
+                                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700"
+                              >
+                                {['Hotel', 'Convention Center', 'Banquet', 'Auditorium', 'Outdoor Stage', 'Exhibition', 'Mall', 'Conference', 'Government Hall', 'Custom Upload'].map(c => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 block mb-1">Designer</label>
+                            <input
+                              type="text"
+                              required
+                              value={mockupForm.designer}
+                              onChange={e => setMockupForm(f => ({ ...f, designer: e.target.value }))}
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-semibold"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-bold text-slate-500 block mb-1">Notes / Technical specs</label>
+                            <textarea
+                              rows={2}
+                              value={mockupForm.notes}
+                              onChange={e => setMockupForm(f => ({ ...f, notes: e.target.value }))}
+                              placeholder="Truss setup needs 3:1 width ratio..."
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-semibold resize-none"
+                            />
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowMockupModal(false)}
+                              className="w-1/2 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-bold"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={saving}
+                              className="w-1/2 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1"
+                            >
+                              {saving && <Loader2 className="w-3 h-3 animate-spin" />} Initialize Mockup
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ─── FIGMA-STYLE AI STAGE MOCKUP WORKSPACE WORKSPACE (MODULE 3) ─── */}
+                  {showWorkspace && activeMockup && (
+                    <div className="fixed inset-0 bg-slate-950 z-50 flex flex-col text-slate-300 font-sans select-none animate-fade-in">
+                      
+                      {/* Top Header Controls Bar */}
+                      <header className="h-14 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between shrink-0">
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => {
+                              setShowWorkspace(false);
+                              setActiveMockup(null);
+                              setRenderedImage('');
+                              setCompareMode(false);
+                              if (selectedEvent) fetchMockups(selectedEvent.id);
+                            }}
+                            className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition"
+                          >
+                            <ArrowLeftRight className="w-4.5 h-4.5 rotate-180" />
+                          </button>
+                          <div className="border-l border-slate-800 pl-4">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-extrabold text-white text-sm tracking-tight">{activeMockup.name}</h3>
+                              <span className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-extrabold">{activeMockup.stageType}</span>
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${getStatusStyle(activeMockup.status)}`}>
+                                {activeMockup.status}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-semibold mt-0.5">Designed by: {activeMockup.designer} · Active Version: V{activeVersion ? activeVersion.versionNumber : 1}</p>
+                          </div>
+                        </div>
+
+                        {/* Toolbar: Undo/Redo & Canvas scaling controls */}
+                        <div className="flex items-center gap-4 bg-slate-950 px-4 py-1.5 rounded-xl border border-slate-800/80">
+                          <div className="flex items-center gap-1.5 border-r border-slate-850 pr-3">
+                            <button
+                              onClick={handleUndo}
+                              disabled={undoStack.length === 0}
+                              className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition disabled:opacity-30"
+                              title="Undo"
+                            >
+                              <Undo className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={handleRedo}
+                              disabled={redoStack.length === 0}
+                              className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded transition disabled:opacity-30"
+                              title="Redo"
+                            >
+                              <Redo className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2 border-r border-slate-850 pr-3 text-xs font-semibold text-slate-400">
+                            <button onClick={() => setEditorZoom(z => Math.max(20, z - 10))} className="p-1 hover:bg-slate-850 rounded"><ZoomOut className="w-3.5 h-3.5" /></button>
+                            <span className="min-w-[34px] text-center">{editorZoom}%</span>
+                            <button onClick={() => setEditorZoom(z => Math.min(300, z + 10))} className="p-1 hover:bg-slate-850 rounded"><ZoomIn className="w-3.5 h-3.5" /></button>
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-450 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={safeZonesVisible}
+                                onChange={e => setSafeZonesVisible(e.target.checked)}
+                                className="w-3.5 h-3.5 bg-slate-900 border-slate-700 rounded text-blue-500"
+                              />
+                              Show Safe Zones
+                            </label>
+                            <button
+                              onClick={() => setEditorFullscreen(!editorFullscreen)}
+                              className={`p-1 hover:bg-slate-850 rounded text-slate-400 hover:text-white ${editorFullscreen ? 'bg-blue-600/20 text-blue-400' : ''}`}
+                            >
+                              <Maximize className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Export Menu dropdown */}
+                        <div className="flex items-center gap-2">
+                          {/* Live render preview trigger */}
+                          <button
+                            onClick={() => generateWorkspacePreview()}
+                            disabled={renderingPreview}
+                            className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1 disabled:opacity-40"
+                          >
+                            {renderingPreview ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Activity className="w-3.5 h-3.5 text-blue-400" />} Render Stages
+                          </button>
+                          
+                          <button
+                            onClick={handleExportPNG}
+                            className="px-4 py-1.5 bg-blue-650 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition flex items-center gap-1"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Export PNG
+                          </button>
+                        </div>
+                      </header>
+
+                      {/* Main Split Panel Area */}
+                      <div className="flex-1 flex overflow-hidden">
+                        
+                        {/* 1. LEFT SIDEBAR PANEL: Layers & Asset Library */}
+                        <div className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
+                          {/* Panel switcher tab */}
+                          <div className="flex border-b border-slate-800 text-[10px] font-extrabold uppercase tracking-wider shrink-0 bg-slate-950/20">
+                            <button
+                              onClick={() => setActiveLeftTab('layers')}
+                              className={`flex-1 py-3 text-center border-b-2 transition ${activeLeftTab === 'layers' ? 'border-blue-500 text-white bg-slate-900/30' : 'border-transparent text-slate-500 hover:text-slate-350'}`}
+                            >
+                              Layers
+                            </button>
+                            <button
+                              onClick={() => setActiveLeftTab('brand_assets')}
+                              className={`flex-1 py-3 text-center border-b-2 transition ${activeLeftTab === 'brand_assets' ? 'border-blue-500 text-white bg-slate-900/30' : 'border-transparent text-slate-500 hover:text-slate-350'}`}
+                            >
+                              Assets
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto p-4 space-y-5">
+                            {/* LAYERS MANAGER */}
+                            {activeLeftTab === 'layers' && (
+                              <div className="space-y-4">
+                                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Canvas Layers</h4>
+                                <div className="space-y-1">
+                                  {[
+                                    { key: 'backdrop', label: 'Base Room Backdrop', icon: <FileImage className="w-4 h-4" /> },
+                                    { key: 'screens',  label: 'LED Screen Overlays', icon: <Layers className="w-4 h-4" /> },
+                                    { key: 'text',     label: 'Corporate Typography', icon: <FileText className="w-4 h-4" /> },
+                                    { key: 'logos',    label: 'Brand Sponsors Row', icon: <Star className="w-4 h-4" /> },
+                                  ].map(layer => {
+                                    const visible = layersVisibility[layer.key as keyof typeof layersVisibility];
+                                    return (
+                                      <div
+                                        key={layer.key}
+                                        className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold ${visible ? 'bg-slate-800/40 text-slate-200' : 'text-slate-550 bg-transparent'}`}
+                                      >
+                                        <div className="flex items-center gap-2.5">
+                                          {layer.icon}
+                                          <span>{layer.label}</span>
+                                        </div>
+                                        <button
+                                          onClick={() => setLayersVisibility(prev => ({ ...prev, [layer.key]: !visible }))}
+                                          className="text-slate-500 hover:text-white p-0.5 rounded transition"
+                                        >
+                                          {visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5 text-slate-600" />}
+                                        </button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* BRAND ASSETS CATALOG */}
+                            {activeLeftTab === 'brand_assets' && (
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Brand Library</h4>
+                                  <label className="text-[9px] font-bold text-blue-400 bg-blue-500/10 px-2 py-1 rounded cursor-pointer hover:bg-blue-500/20 border border-blue-500/20">
+                                    Upload File
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      onChange={e => handleUploadAssetFile(e, 'Sponsor Logo')}
+                                      className="hidden"
+                                    />
+                                  </label>
+                                </div>
+
+                                {assetsList.length === 0 ? (
+                                  <p className="text-[11px] text-slate-500 italic text-center py-4 bg-slate-950/20 border border-slate-800 rounded-xl">No assets uploaded.</p>
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {assetsList.map(asset => {
+                                      const isSelected = workspaceConfig.assetUrls.includes(asset.url);
+                                      return (
+                                        <div
+                                          key={asset.id}
+                                          onClick={() => {
+                                            const nextAssetUrls = isSelected
+                                              ? workspaceConfig.assetUrls.filter(url => url !== asset.url)
+                                              : [...workspaceConfig.assetUrls, asset.url];
+                                            updateWorkspaceConfig({ assetUrls: nextAssetUrls });
+                                          }}
+                                          className={`group relative aspect-video border rounded-xl overflow-hidden cursor-pointer bg-slate-950 flex flex-col justify-end p-2 transition-all ${isSelected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-slate-800 hover:border-slate-700'}`}
+                                        >
+                                          <img src={asset.url} alt={asset.name} className="absolute inset-0 w-full h-full object-contain p-1.5 opacity-80 group-hover:opacity-100 transition" />
+                                          <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                            <span className="text-[9px] font-extrabold uppercase tracking-wide bg-blue-600 text-white px-2 py-0.5 rounded shadow">
+                                              {isSelected ? 'Deselect' : 'Use Asset'}
+                                            </span>
+                                          </div>
+                                          <p className="relative z-10 text-[9px] font-bold text-white truncate text-center leading-none mt-1">{asset.name}</p>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 2. CENTER PANEL: Zoom/Pan interactive Canvas Preview */}
+                        <div className="flex-1 bg-slate-950 overflow-hidden relative flex flex-col justify-center items-center p-8">
+                          
+                          {/* Split screen image comparison overlay */}
+                          {compareMode ? (
+                            <div className="w-full h-full flex gap-4 animate-fade-in relative z-20">
+                              <button
+                                onClick={() => setCompareMode(false)}
+                                className="absolute top-2 left-1/2 -translate-x-1/2 bg-rose-600 text-white rounded-full px-4 py-1.5 text-xs font-bold flex items-center gap-1 shadow-lg hover:bg-rose-700 transition"
+                              >
+                                <X className="w-4 h-4" /> Close Compare
+                              </button>
+                              
+                              <div className="flex-1 flex flex-col border border-slate-800 bg-slate-900/40 rounded-2xl overflow-hidden shadow-inner">
+                                <div className="bg-slate-950 px-4 py-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 border-b border-slate-800">Left Version: V{compareLeftVersion?.versionNumber}</div>
+                                <div className="flex-1 flex items-center justify-center p-4">
+                                  {compareLeftImage ? <img src={compareLeftImage} alt="Left" className="max-w-full max-h-full object-contain rounded-lg border border-slate-850" /> : <div className="text-slate-600 italic">No image rendered.</div>}
+                                </div>
+                              </div>
+                              <div className="flex-1 flex flex-col border border-slate-800 bg-slate-900/40 rounded-2xl overflow-hidden shadow-inner">
+                                <div className="bg-slate-950 px-4 py-2 text-[10px] font-extrabold uppercase tracking-widest text-slate-400 border-b border-slate-800">Right Version: V{compareRightVersion?.versionNumber}</div>
+                                <div className="flex-1 flex items-center justify-center p-4">
+                                  {compareRightImage ? <img src={compareRightImage} alt="Right" className="max-w-full max-h-full object-contain rounded-lg border border-slate-850" /> : <div className="text-slate-600 italic">No image rendered.</div>}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              className="relative border border-slate-850 bg-slate-900/20 shadow-2xl rounded-2xl overflow-hidden transition-transform duration-100 flex items-center justify-center cursor-move"
+                              style={{
+                                transform: `scale(${editorZoom / 100}) translate(${editorPan.x}px, ${editorPan.y}px)`,
+                                transformOrigin: 'center',
+                                width: '100%',
+                                maxWidth: '1024px',
+                                aspectRatio: '3/2'
+                              }}
+                              onMouseDown={e => {
+                                const startX = e.clientX - editorPan.x;
+                                const startY = e.clientY - editorPan.y;
+                                const handleMouseMove = (moveEvent: MouseEvent) => {
+                                  setEditorPan({
+                                    x: moveEvent.clientX - startX,
+                                    y: moveEvent.clientY - startY
+                                  });
+                                };
+                                const handleMouseUp = () => {
+                                  window.removeEventListener('mousemove', handleMouseMove);
+                                  window.removeEventListener('mouseup', handleMouseUp);
+                                };
+                                window.addEventListener('mousemove', handleMouseMove);
+                                window.addEventListener('mouseup', handleMouseUp);
+                              }}
+                            >
+                              {/* Backdrop base Room Image layer */}
+                              {layersVisibility.backdrop && (
+                                renderedImage ? (
+                                  <img src={renderedImage} alt="Preview Canvas" className="w-full h-full object-cover select-none pointer-events-none" />
+                                ) : (
+                                  activeMockup.hall?.baseImageUrl ? (
+                                    <img src={activeMockup.hall.baseImageUrl} alt="Base room" className="w-full h-full object-cover select-none pointer-events-none opacity-40" />
+                                  ) : (
+                                    <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center text-slate-500 space-y-2">
+                                      <ImageIcon className="w-10 h-10 text-slate-700" />
+                                      <p className="text-xs font-semibold">Click "Render Stages" to compile AI screens</p>
+                                    </div>
+                                  )
+                                )
+                              )}
+
+                              {/* Interactive Safe Zones outline boxes */}
+                              {safeZonesVisible && (
+                                <svg className="absolute inset-0 w-full h-full pointer-events-none z-30" viewBox="0 0 1536 1024" fill="none">
+                                  {/* Center safe area */}
+                                  <rect x="560" y="240" width="416" height="250" stroke="rgba(56, 189, 248, 0.75)" strokeWidth="3" strokeDasharray="6 4" />
+                                  <text x="768" y="230" fill="#38bdf8" fontSize="14" fontWeight="800" textAnchor="middle">CENTER LED SAFE ZONE</text>
+                                  
+                                  {/* Left Wing safe area */}
+                                  {workspaceConfig.screenConfig !== 'center' && (
+                                    <>
+                                      <rect x="362" y="240" width="128" height="405" stroke="rgba(244, 63, 94, 0.75)" strokeWidth="3" strokeDasharray="6 4" />
+                                      <text x="426" y="230" fill="#f43f5e" fontSize="14" fontWeight="800" textAnchor="middle">LEFT WING</text>
+
+                                      <rect x="1073" y="240" width="128" height="405" stroke="rgba(244, 63, 94, 0.75)" strokeWidth="3" strokeDasharray="6 4" />
+                                      <text x="1137" y="230" fill="#f43f5e" fontSize="14" fontWeight="800" textAnchor="middle">RIGHT WING</text>
+                                    </>
+                                  )}
+                                </svg>
+                              )}
+
+                              {/* Vercel-style skeleton loading overlay */}
+                              {renderingPreview && (
+                                <div className="absolute inset-0 bg-slate-950/80 z-40 flex flex-col items-center justify-center space-y-4">
+                                  <div className="relative flex items-center justify-center">
+                                    <div className="w-12 h-12 rounded-full border-4 border-t-blue-500 border-r-transparent border-b-transparent border-l-transparent animate-spin" />
+                                    <Sparkles className="absolute w-5 h-5 text-blue-400" />
+                                  </div>
+                                  <p className="text-xs font-extrabold text-blue-400 uppercase tracking-widest animate-pulse">Compositing stage layout Safe Zones...</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Float bar info */}
+                          {!compareMode && (
+                            <div className="absolute bottom-4 left-4 bg-slate-900/80 backdrop-blur border border-slate-800 px-3 py-1.5 rounded-lg text-[10px] font-bold text-slate-500">
+                              🖱️ Hold drag left-click anywhere inside the canvas to PAN
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 3. RIGHT SIDEBAR PANEL: Properties Configuration & Versions */}
+                        <div className="w-72 bg-slate-900 border-l border-slate-800 flex flex-col shrink-0">
+                          {/* Panel tab switcher */}
+                          <div className="flex border-b border-slate-800 text-[10px] font-extrabold uppercase tracking-wider shrink-0 bg-slate-950/20">
+                            <button
+                              onClick={() => setActiveRightTab('props')}
+                              className={`flex-1 py-3 text-center border-b-2 transition ${activeRightTab === 'props' ? 'border-blue-500 text-white bg-slate-900/30' : 'border-transparent text-slate-500 hover:text-slate-350'}`}
+                            >
+                              Properties
+                            </button>
+                            <button
+                              onClick={() => setActiveRightTab('versions')}
+                              className={`flex-1 py-3 text-center border-b-2 transition ${activeRightTab === 'versions' ? 'border-blue-500 text-white bg-slate-900/30' : 'border-transparent text-slate-500 hover:text-slate-350'}`}
+                            >
+                              Versions ({activeMockup.versions?.length || 1})
+                            </button>
+                          </div>
+
+                          <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                            
+                            {/* PROPERTIES PANEL */}
+                            {activeRightTab === 'props' && (
+                              <div className="space-y-4">
+                                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Layout Properties</h4>
+                                
+                                <div className="space-y-3.5">
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 block mb-1">Event Title</label>
+                                    <input
+                                      type="text"
+                                      value={workspaceConfig.title}
+                                      onChange={e => updateWorkspaceConfig({ title: e.target.value })}
+                                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                    />
+                                  </div>
+
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 block mb-1">Event Subtitle</label>
+                                    <input
+                                      type="text"
+                                      value={workspaceConfig.subtitle}
+                                      onChange={e => updateWorkspaceConfig({ subtitle: e.target.value })}
+                                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                    />
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2.5">
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Timing details</label>
+                                      <input
+                                        type="text"
+                                        value={workspaceConfig.dateText}
+                                        onChange={e => updateWorkspaceConfig({ dateText: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                      />
+                                    </div>
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Venue Hall name</label>
+                                      <input
+                                        type="text"
+                                        value={workspaceConfig.venueText}
+                                        onChange={e => updateWorkspaceConfig({ venueText: e.target.value })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <label className="text-[10px] font-bold text-slate-400 block mb-1">Sponsor Logos (badges)</label>
+                                    <input
+                                      type="text"
+                                      placeholder="Comma separated: Microsoft, Stripe"
+                                      value={workspaceConfig.logos.join(', ')}
+                                      onChange={e => {
+                                        const values = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
+                                        updateWorkspaceConfig({ logos: values });
+                                      }}
+                                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                    />
+                                  </div>
+
+                                  <div className="border-t border-slate-800 pt-3 space-y-3">
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-400 block mb-1">Screen Configurations</label>
+                                      <select
+                                        value={workspaceConfig.screenConfig}
+                                        onChange={e => updateWorkspaceConfig({ screenConfig: e.target.value as any })}
+                                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                      >
+                                        <option value="center">Center LED Screen Only</option>
+                                        <option value="wings">Left/Right LED Wings Only</option>
+                                        <option value="all">Full Stage LED Matrix (All screens)</option>
+                                      </select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div>
+                                        <label className="text-[10px] font-bold text-slate-400 block mb-1">Theme</label>
+                                        <select
+                                          value={workspaceConfig.theme}
+                                          onChange={e => updateWorkspaceConfig({ theme: e.target.value as any })}
+                                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                        >
+                                          <option value="dark">Dark Slate</option>
+                                          <option value="light">Warm Ivory</option>
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label className="text-[10px] font-bold text-slate-400 block mb-1">Wing Mode</label>
+                                        <select
+                                          value={workspaceConfig.wingDisplayMode}
+                                          onChange={e => updateWorkspaceConfig({ wingDisplayMode: e.target.value as any })}
+                                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-semibold"
+                                        >
+                                          <option value="mirror">Mirror Content</option>
+                                          <option value="extended">Extended Content</option>
+                                        </select>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    onClick={handleSaveVersion}
+                                    disabled={saving}
+                                    className="w-full bg-blue-650 hover:bg-blue-700 text-white py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 mt-4"
+                                  >
+                                    {saving ? <Loader2 className="w-3 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Save New Version
+                                  </button>
+
+                                </div>
+                              </div>
+                            )}
+
+                            {/* VERSION CONTROL HISTORY */}
+                            {activeRightTab === 'versions' && (
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Version History</h4>
+                                  {activeMockup.versions && activeMockup.versions.length > 1 && (
+                                    <button
+                                      onClick={() => startCompareMode(activeMockup.versions[1], activeMockup.versions[0])}
+                                      className="text-[9px] font-extrabold uppercase bg-slate-800 hover:bg-slate-750 text-blue-400 px-2 py-0.5 rounded border border-slate-700 flex items-center gap-0.5"
+                                    >
+                                      <Columns className="w-3 h-3" /> Compare V1/V2
+                                    </button>
+                                  )}
+                                </div>
+
+                                <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
+                                  {activeMockup.versions && activeMockup.versions.map((ver: any, idx: number) => {
+                                    const isActive = activeVersion && activeVersion.id === ver.id;
+                                    return (
+                                      <div
+                                        key={ver.id}
+                                        className={`p-3 rounded-xl border flex flex-col gap-2 transition ${isActive ? 'bg-slate-800/40 border-blue-500/40 text-white' : 'bg-transparent border-slate-800 text-slate-400 hover:border-slate-750'}`}
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold flex items-center gap-1.5">
+                                            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-blue-500' : 'bg-slate-600'}`} />
+                                            Version {ver.versionNumber}
+                                          </span>
+                                          <span className="text-[9px] font-semibold text-slate-500">{new Date(ver.createdAt).toLocaleTimeString()}</span>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => handleRestoreVersion(ver.versionNumber)}
+                                            className="flex-1 py-1.5 bg-slate-950 text-white hover:bg-slate-900 border border-slate-800/60 rounded text-[9px] font-bold transition flex items-center justify-center gap-0.5"
+                                          >
+                                            <Undo className="w-2.5 h-2.5" /> Restore Config
+                                          </button>
+                                          
+                                          {/* Compare link helper */}
+                                          {idx > 0 && (
+                                            <button
+                                              onClick={() => startCompareMode(ver, activeMockup.versions[0])}
+                                              className="p-1.5 bg-slate-950 hover:bg-slate-900 border border-slate-800/60 rounded text-[9px] font-bold transition text-slate-400 hover:text-white"
+                                              title="Compare with latest"
+                                            >
+                                              <ArrowLeftRight className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                          </div>
+                        </div>
+
                       </div>
                     </div>
                   )}
@@ -1711,7 +2842,7 @@ export default function AdminDashboard() {
                             <p className="font-medium text-slate-800 text-sm">{v.name}</p>
                             <p className="text-xs text-slate-400">{v.address} · {v.city?.name}</p>
                           </div>
-                          <button onClick={() => deleteVenue(v.id)} className="text-slate-400 hover:text-red-600 p-1 rounded transition"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => deleteVenue(v.id)} className="text-slate-400 hover:text-red-650 p-1 rounded transition"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       ))}
                     </div>
@@ -1737,7 +2868,7 @@ export default function AdminDashboard() {
                             onChange={c => setEditMasks(c)}
                           />
                         ) : (
-                          <p className="text-amber-600 text-sm bg-amber-50 p-3 rounded-lg">Base image is missing.</p>
+                          <p className="text-amber-605 text-sm bg-amber-50 p-3 rounded-lg">Base image is missing.</p>
                         )}
 
                         {/* Technical Uploads in Edit Modal */}
@@ -1792,7 +2923,7 @@ export default function AdminDashboard() {
                       
                       {/* Technical Specs Uploads */}
                       <div className="border-t border-slate-100 pt-4 space-y-3.5">
-                        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Base Photo & Blueprints</h4>
+                        <h4 className="text-[11px] font-bold text-slate-450 uppercase tracking-widest">Base Photo & Blueprints</h4>
                         
                         <div>
                           <label className="text-[11px] font-bold text-slate-500 block mb-1">Base Stage Photo (Required)</label>
@@ -1841,7 +2972,7 @@ export default function AdminDashboard() {
                               )}
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-bold text-slate-800 text-sm leading-snug">{h.name}</h4>
-                                <p className="text-xs text-slate-400 font-medium mt-0.5">{h.venue?.name} · {h.venue?.city?.name}</p>
+                                <p className="text-xs text-slate-450 font-medium mt-0.5">{h.venue?.name} · {h.venue?.city?.name}</p>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">L:{h.length}m W:{h.width}m H:{h.height}m</span>
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-650">Cap: {h.capacity} pax</span>
@@ -1850,8 +2981,8 @@ export default function AdminDashboard() {
                                 </div>
                               </div>
                               <div className="flex flex-col gap-1.5 shrink-0">
-                                <button onClick={() => startEditingMasks(h)} className="text-[11px] bg-blue-50 text-blue-650 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap">Edit Config</button>
-                                <button onClick={() => deleteHall(h.id)} className="text-[11px] bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg font-bold transition-colors">Delete</button>
+                                <button onClick={() => startEditingMasks(h)} className="text-[11px] bg-blue-50 text-blue-655 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap">Edit Config</button>
+                                <button onClick={() => deleteHall(h.id)} className="text-[11px] bg-red-50 text-red-550 hover:bg-red-100 px-3 py-1.5 rounded-lg font-bold transition-colors">Delete</button>
                               </div>
                             </div>
                           </div>
@@ -1889,7 +3020,7 @@ export default function AdminDashboard() {
                               ))}
                             </div>
                           </div>
-                          <button onClick={() => deleteBranding(b.id)} className="text-slate-400 hover:text-red-600 mt-1 shrink-0 p-1"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => deleteBranding(b.id)} className="text-slate-400 hover:text-red-650 mt-1 shrink-0 p-1"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       ))}
                     </div>
@@ -2010,7 +3141,7 @@ export default function AdminDashboard() {
 
                                   {/* Role */}
                                   <td className="px-6 py-4">
-                                    <span className="inline-block text-[11px] font-semibold text-slate-605 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/40">
+                                    <span className="inline-block text-[11px] font-semibold text-slate-650 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/40">
                                       {u.role.name}
                                     </span>
                                   </td>
@@ -2018,11 +3149,11 @@ export default function AdminDashboard() {
                                   {/* Status */}
                                   <td className="px-6 py-4">
                                     {u.status === 'active' ? (
-                                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-650 font-semibold">
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active
                                       </span>
                                     ) : (
-                                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-500">
+                                      <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-500 font-semibold">
                                         <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Suspended
                                       </span>
                                     )}
@@ -2045,7 +3176,7 @@ export default function AdminDashboard() {
                                         }}
                                         disabled={isSelf}
                                         title={u.status === 'active' ? 'Suspend Account' : 'Activate Account'}
-                                        className={`p-1.5 rounded-lg border transition-colors ${u.status === 'active' ? 'text-amber-500 hover:bg-amber-50 border-amber-100' : 'text-emerald-500 hover:bg-emerald-50 border-emerald-100'} disabled:opacity-40`}
+                                        className={`p-1.5 rounded-lg border transition-colors ${u.status === 'active' ? 'text-amber-500 hover:bg-amber-50 border-amber-100' : 'text-emerald-555 hover:bg-emerald-50 border-emerald-100'} disabled:opacity-40`}
                                       >
                                         {u.status === 'active' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                                       </button>
@@ -2076,7 +3207,7 @@ export default function AdminDashboard() {
                                           handleDeleteUser(u.id);
                                         }}
                                         disabled={isSelf}
-                                        className="p-1.5 text-rose-400 hover:bg-rose-50 border border-rose-100 rounded-lg transition-colors disabled:opacity-40"
+                                        className="p-1.5 text-rose-455 hover:bg-rose-50 border border-rose-100 rounded-lg transition-colors disabled:opacity-40"
                                       >
                                         <Trash2 className="w-4 h-4" />
                                       </button>
@@ -2154,7 +3285,7 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               onClick={() => setShowAddUserModal(false)}
-                              className="w-1/2 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-sm font-bold transition-colors"
+                              className="w-1/2 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-605 rounded-xl text-sm font-bold transition-colors"
                             >
                               Cancel
                             </button>
@@ -2246,7 +3377,7 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               onClick={() => setShowEditUserModal(false)}
-                              className="w-1/2 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-sm font-bold transition-colors"
+                              className="w-1/2 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-605 rounded-xl text-sm font-bold transition-colors"
                             >
                               Cancel
                             </button>
@@ -2277,7 +3408,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="space-y-1">
                       <h4 className="font-bold text-blue-800 text-sm">Enterprise Security Matrix</h4>
-                      <p className="text-xs text-blue-700/80 leading-relaxed font-semibold">
+                      <p className="text-xs text-blue-755 leading-relaxed font-semibold">
                         Role permissions are fetched dynamically from the database. Changes saved here will immediately apply across all users belonging to that role.
                         Note: The <b>Super Admin</b> role is hardcoded to bypass security filters and retains all permissions.
                       </p>

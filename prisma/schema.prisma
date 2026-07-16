@@ -206,6 +206,8 @@ model Event {
 
   user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   venues           EventVenue[]
+  mockups          Mockup[]
+  assets           Asset[]
 
   @@map("events")
 }
@@ -222,6 +224,7 @@ model EventVenue {
 
   event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
   halls         EventHall[]
+  mockups       Mockup[]
 
   @@map("event_venues")
 }
@@ -237,6 +240,79 @@ model EventHall {
   specialNotes String?    @map("special_notes")
 
   venue        EventVenue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  mockups      Mockup[]
 
   @@map("event_halls")
 }
+
+model Mockup {
+  id             Int             @id @default(autoincrement())
+  eventId        Int             @map("event_id")
+  venueId        Int             @map("venue_id")
+  hallId         Int             @map("hall_id")
+  name           String
+  stageType      String          @map("stage_type")
+  category       String
+  status         String          @default("Draft")
+  designer       String
+  notes          String?
+  createdAt      DateTime        @default(now())       @map("created_at")
+  updatedAt      DateTime        @updatedAt            @map("updated_at")
+
+  event          Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  venue          EventVenue      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  hall           EventHall       @relation(fields: [hallId], references: [id], onDelete: Cascade)
+  versions       MockupVersion[]
+
+  @@map("mockups")
+}
+
+model MockupVersion {
+  id            Int      @id @default(autoincrement())
+  mockupId      Int      @map("mockup_id")
+  versionNumber Int      @map("version_number")
+  imageUrl      String   @map("image_url")
+  config        String
+  createdAt     DateTime @default(now())               @map("created_at")
+
+  mockup        Mockup   @relation(fields: [mockupId], references: [id], onDelete: Cascade)
+
+  @@map("mockup_versions")
+}
+
+model Asset {
+  id        Int      @id @default(autoincrement())
+  eventId   Int      @map("event_id")
+  name      String
+  type      String
+  url       String
+  fileType  String   @map("file_type")
+  createdAt DateTime @default(now())   @map("created_at")
+
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("assets")
+}
+
+model Template {
+  id                Int      @id @default(autoincrement())
+  name              String
+  category          String
+  imageUrl          String   @map("image_url")
+  centerMaskX       Int      @default(0) @map("center_mask_x")
+  centerMaskY       Int      @default(0) @map("center_mask_y")
+  centerMaskWidth   Int      @default(0) @map("center_mask_width")
+  centerMaskHeight  Int      @default(0) @map("center_mask_height")
+  leftMaskX         Int      @default(0) @map("left_mask_x")
+  leftMaskY         Int      @default(0) @map("left_mask_y")
+  leftMaskWidth     Int      @default(0) @map("left_mask_width")
+  leftMaskHeight    Int      @default(0) @map("left_mask_height")
+  rightMaskX        Int      @default(0) @map("right_mask_x")
+  rightMaskY        Int      @default(0) @map("right_mask_y")
+  rightMaskWidth    Int      @default(0) @map("right_mask_width")
+  rightMaskHeight   Int      @default(0) @map("right_mask_height")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@map("templates")
+}
+
