@@ -110,6 +110,7 @@ model User {
   role         Role                 @relation(fields: [roleId], references: [id])
   sessions     Session[]
   resetTokens  PasswordResetToken[]
+  events       Event[]
 
   @@map("users")
 }
@@ -166,4 +167,76 @@ model PasswordResetToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_reset_tokens")
+}
+
+model Event {
+  id               Int          @id @default(autoincrement())
+  userId           Int          @map("user_id")
+  name             String
+  tagline          String
+  description      String
+  clientName       String       @map("client_name")
+  organizerName    String       @map("organizer_name")
+  department       String?
+  category         String       // Government, Corporate, etc.
+  status           String       @default("Draft") // Draft, Planning, etc.
+  
+  // Timeline
+  startDate        DateTime     @map("start_date")
+  endDate          DateTime     @map("end_date")
+  setupDate        DateTime     @map("setup_date")
+  dismantleDate    DateTime     @map("dismantle_date")
+  startTime        String       @map("start_time")
+  endTime          String       @map("end_time")
+
+  // Statistics
+  expectedVisitors Int          @default(0) @map("expected_visitors")
+  budget           Float        @default(0.0)
+
+  // Primary Location
+  venueName        String       @map("venue_name")
+  venueAddress     String       @map("venue_address")
+  city             String
+  state            String
+  country          String
+  googleMapsUrl    String?      @map("google_maps_url")
+
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  user             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venues           EventVenue[]
+
+  @@map("events")
+}
+
+model EventVenue {
+  id            Int         @id @default(autoincrement())
+  eventId       Int         @map("event_id")
+  name          String
+  address       String
+  city          String
+  state         String
+  country       String
+  googleMapsUrl String?     @map("google_maps_url")
+
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  halls         EventHall[]
+
+  @@map("event_venues")
+}
+
+model EventHall {
+  id           Int        @id @default(autoincrement())
+  venueId      Int        @map("venue_id")
+  name         String
+  purpose      String
+  capacity     Int        @default(0)
+  floorNumber  String?    @map("floor_number")
+  area         Float      @default(0)
+  specialNotes String?    @map("special_notes")
+
+  venue        EventVenue @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@map("event_halls")
 }

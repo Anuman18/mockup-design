@@ -5,9 +5,12 @@ import {
   Building2, Layers, MapPin, Plus, Trash2, Loader2, Check,
   Image as ImageIcon, ChevronDown, X, Star, BookOpen, Settings,
   Map as MapIcon, Upload, Users, ShieldAlert, Key, Lock, Unlock, LogOut,
-  CheckCircle, AlertCircle, Search, Filter, ShieldCheck, Sparkles
+  CheckCircle, AlertCircle, Search, Filter, ShieldCheck, Sparkles,
+  Calendar, Clock, User, Briefcase, PlusCircle, Layout, FileText,
+  DollarSign, Activity, FileSpreadsheet, ListTodo, Clipboard, HelpCircle
 } from 'lucide-react';
 import AdminBoundingBox from '@/components/AdminBoundingBox';
+import Link from 'next/link';
 
 // ─── Existing Types ──────────────────────────────────────────────────────────
 interface City    { id: number; name: string; state: string; status: string; }
@@ -16,7 +19,7 @@ interface Hall    { id: number; venueId: number; name: string; length: number; w
 interface Logo    { id: number; logoName: string; }
 interface Branding{ id: number; templateName: string; logos: Logo[]; }
 
-type Tab = 'cities' | 'venues' | 'halls' | 'branding' | 'users' | 'roles';
+type Tab = 'events' | 'cities' | 'venues' | 'halls' | 'branding' | 'users' | 'roles';
 
 interface ScreenCoords { x: number; y: number; w: number; h: number; }
 interface MultiScreenCoords {
@@ -68,7 +71,7 @@ function useToast() {
 }
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>('cities');
+  const [activeTab, setActiveTab] = useState<Tab>('events');
   const { toast, show } = useToast();
 
   const [cities,   setCities]   = useState<City[]>([]);
@@ -133,6 +136,58 @@ export default function AdminDashboard() {
   const [permissionsList, setPermissionsList] = useState<PermissionRecord[]>([]);
   const [savingMatrixId, setSavingMatrixId] = useState<number | null>(null);
 
+  // ─── Module 2 Event Conceptualization State ──────────────────────────────
+  const [eventsList, setEventsList] = useState<any[]>([]);
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventStatusFilter, setEventStatusFilter] = useState('');
+  const [eventCategoryFilter, setEventCategoryFilter] = useState('');
+  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
+  
+  // Modals Toggles
+  const [showCreateWizard, setShowCreateWizard] = useState(false);
+  const [showDetailView, setShowDetailView] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+
+  // Wizards Form Data
+  const initialWizardForm = {
+    name: '',
+    tagline: '',
+    description: '',
+    clientName: '',
+    organizerName: '',
+    department: '',
+    category: 'Corporate',
+    status: 'Draft',
+    expectedVisitors: '500',
+    budget: '50000',
+    startDate: '',
+    endDate: '',
+    setupDate: '',
+    dismantleDate: '',
+    startTime: '09:00',
+    endTime: '18:00',
+    venueName: '',
+    venueAddress: '',
+    city: '',
+    state: '',
+    country: 'India',
+    googleMapsUrl: '',
+    halls: [] as any[], // Primary venue halls
+    venues: [] as any[] // Additional venues
+  };
+  const [wizardForm, setWizardForm] = useState(initialWizardForm);
+
+  // Temporary wizard sub-forms
+  const [wizardHallTemp, setWizardHallTemp] = useState({
+    name: '', purpose: '', capacity: '', floorNumber: '', area: '', specialNotes: ''
+  });
+  const [wizardVenueTemp, setWizardVenueTemp] = useState({
+    name: '', address: '', city: '', state: '', country: 'India', googleMapsUrl: '', halls: [] as any[]
+  });
+  const [wizardVenueHallTemp, setWizardVenueHallTemp] = useState({
+    name: '', purpose: '', capacity: '', floorNumber: '', area: '', specialNotes: ''
+  });
+
   // ─── Load Current Logged-in Profile ───────────────────────────────────────
   const fetchCurrentUser = async () => {
     try {
@@ -190,6 +245,36 @@ export default function AdminDashboard() {
     }
   };
 
+  // ─── Fetch Event Conceptualizations ───────────────────────────────────────
+  const fetchEvents = async () => {
+    try {
+      const res = await fetch(`/api/events?search=${encodeURIComponent(eventSearch)}&status=${eventStatusFilter}&category=${eventCategoryFilter}`);
+      const data = await res.json();
+      if (res.ok) {
+        setEventsList(data);
+      } else {
+        show(data.error || 'Failed to query events', 'error');
+      }
+    } catch (err) {
+      show('Error loading events database', 'error');
+    }
+  };
+
+  const fetchSingleEvent = async (id: number) => {
+    try {
+      const res = await fetch(`/api/events/${id}`);
+      const data = await res.json();
+      if (res.ok) {
+        setSelectedEvent(data);
+        setShowDetailView(true);
+      } else {
+        show(data.error || 'Failed to load event details', 'error');
+      }
+    } catch (err) {
+      show('Error loading event profile', 'error');
+    }
+  };
+
   // ─── Fetch All Layout Settings ────────────────────────────────────────────
   const fetchAll = async () => {
     setLoading(true);
@@ -222,8 +307,10 @@ export default function AdminDashboard() {
       fetchUsersDirectory();
     } else if (activeTab === 'roles') {
       fetchRolesMatrix();
+    } else if (activeTab === 'events') {
+      fetchEvents();
     }
-  }, [activeTab, userSearch, userRoleFilter, userStatusFilter]);
+  }, [activeTab, userSearch, userRoleFilter, userStatusFilter, eventSearch, eventStatusFilter, eventCategoryFilter]);
 
   // ─── User Add/Edit Handlers ────────────────────────────────────────────────
   const handleAddUser = async (e: React.FormEvent) => {
@@ -348,6 +435,177 @@ export default function AdminDashboard() {
     }
     setSavingMatrixId(null);
   };
+
+  // ─── Module 2 Wizard & CRUD Handlers ─────────────────────────────────────
+  const addHallToPrimary = () => {
+    if (!wizardHallTemp.name.trim()) return show('Hall name is required', 'error');
+    setWizardForm(f => ({
+      ...f,
+      halls: [...f.halls, {
+        name: wizardHallTemp.name,
+        purpose: wizardHallTemp.purpose || 'General Presentation',
+        capacity: wizardHallTemp.capacity ? parseInt(wizardHallTemp.capacity, 10) : 100,
+        floorNumber: wizardHallTemp.floorNumber || 'G',
+        area: wizardHallTemp.area ? parseFloat(wizardHallTemp.area) : 100,
+        specialNotes: wizardHallTemp.specialNotes
+      }]
+    }));
+    setWizardHallTemp({ name: '', purpose: '', capacity: '', floorNumber: '', area: '', specialNotes: '' });
+    show('Hall added to planning list');
+  };
+
+  const addHallToTempVenue = () => {
+    if (!wizardVenueHallTemp.name.trim()) return show('Hall name is required', 'error');
+    setWizardVenueTemp(v => ({
+      ...v,
+      halls: [...v.halls, {
+        name: wizardVenueHallTemp.name,
+        purpose: wizardVenueHallTemp.purpose || 'Exhibition/Booth Space',
+        capacity: wizardVenueHallTemp.capacity ? parseInt(wizardVenueHallTemp.capacity, 10) : 50,
+        floorNumber: wizardVenueHallTemp.floorNumber || 'G',
+        area: wizardVenueHallTemp.area ? parseFloat(wizardVenueHallTemp.area) : 80,
+        specialNotes: wizardVenueHallTemp.specialNotes
+      }]
+    }));
+    setWizardVenueHallTemp({ name: '', purpose: '', capacity: '', floorNumber: '', area: '', specialNotes: '' });
+    show('Hall added to venue');
+  };
+
+  const addAdditionalVenue = () => {
+    if (!wizardVenueTemp.name.trim() || !wizardVenueTemp.address.trim() || !wizardVenueTemp.city.trim()) {
+      return show('Venue name, address, and city are required', 'error');
+    }
+    setWizardForm(f => ({
+      ...f,
+      venues: [...f.venues, { ...wizardVenueTemp }]
+    }));
+    setWizardVenueTemp({ name: '', address: '', city: '', state: '', country: 'India', googleMapsUrl: '', halls: [] });
+    show('Venue added to planning workspace');
+  };
+
+  const handleCreateEventSubmit = async () => {
+    // Basic validation
+    if (!wizardForm.name.trim() || !wizardForm.clientName.trim() || !wizardForm.venueName.trim()) {
+      return show('Name, client, and primary venue details are required', 'error');
+    }
+    if (!wizardForm.startDate || !wizardForm.endDate || !wizardForm.setupDate || !wizardForm.dismantleDate) {
+      return show('Timeline setup dates are required', 'error');
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(wizardForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show('Event project workspace created successfully!');
+        setShowCreateWizard(false);
+        setWizardForm(initialWizardForm);
+        setWizardStep(1);
+        fetchEvents();
+      } else {
+        show(data.error || 'Failed to create event workspace', 'error');
+      }
+    } catch (err) {
+      show('Error submitting event conceptualization', 'error');
+    }
+    setSaving(false);
+  };
+
+  const updateEventStatus = async (id: number, nextStatus: string) => {
+    try {
+      const res = await fetch(`/api/events/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        show(`Event status updated to ${nextStatus}`);
+        setSelectedEvent(data);
+        fetchEvents();
+      } else {
+        show(data.error || 'Failed to update status', 'error');
+      }
+    } catch (err) {
+      show('Error updating event status', 'error');
+    }
+  };
+
+  const deleteEvent = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this event workspace? All related venues, halls, and sheets will be permanently removed!')) return;
+    try {
+      const res = await fetch(`/api/events/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        show('Event project workspace deleted');
+        setShowDetailView(false);
+        setSelectedEvent(null);
+        fetchEvents();
+      } else {
+        const data = await res.json();
+        show(data.error || 'Failed to delete event', 'error');
+      }
+    } catch (err) {
+      show('Error deleting event workspace', 'error');
+    }
+  };
+
+  // Helper: dynamic category gradient generator for banners
+  const getBannerGradient = (category: string) => {
+    switch (category) {
+      case 'Government': return 'from-slate-800 via-slate-900 to-zinc-900';
+      case 'Corporate': return 'from-blue-600 via-indigo-600 to-indigo-800';
+      case 'Exhibition': return 'from-emerald-500 via-teal-600 to-emerald-700';
+      case 'Conference': return 'from-violet-500 via-purple-600 to-indigo-700';
+      case 'Wedding': return 'from-rose-450 via-pink-500 to-rose-600';
+      case 'Political': return 'from-orange-500 via-amber-600 to-red-650';
+      case 'Product Launch': return 'from-cyan-500 via-blue-600 to-violet-600';
+      case 'Cultural': return 'from-fuchsia-500 via-pink-600 to-rose-600';
+      case 'Sports': return 'from-green-500 via-emerald-600 to-teal-700';
+      default: return 'from-slate-500 via-slate-600 to-zinc-700';
+    }
+  };
+
+  // Helper: Status badge color mapping
+  const getStatusStyle = (status: string) => {
+    switch (status) {
+      case 'Live': return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      case 'Approved': return 'bg-blue-50 text-blue-700 border-blue-200';
+      case 'Working': return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+      case 'Planning': return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 'Completed': return 'bg-violet-50 text-violet-700 border-violet-200';
+      case 'Draft': return 'bg-slate-100 text-slate-600 border-slate-200';
+      case 'Cancelled': return 'bg-rose-50 text-rose-700 border-rose-200';
+      default: return 'bg-zinc-50 text-zinc-650 border-zinc-200';
+    }
+  };
+
+  // Helper: compute metrics cards values
+  const computeDashboardMetrics = () => {
+    let venuesPlanned = 0;
+    let hallsPlanned = 0;
+    let expectedVisitorsSum = 0;
+    let budgetSum = 0;
+
+    eventsList.forEach(e => {
+      venuesPlanned += e.venueCount || 0;
+      hallsPlanned += e.hallCount || 0;
+      expectedVisitorsSum += e.expectedVisitors || 0;
+      budgetSum += e.budget || 0;
+    });
+
+    return {
+      venuesPlanned,
+      hallsPlanned,
+      expectedVisitorsSum,
+      budgetSum
+    };
+  };
+
+  const metrics = computeDashboardMetrics();
 
   // ─── Existing Cities handlers ──────────────────────────────────────────────
   const addCity = async () => {
@@ -586,7 +844,7 @@ export default function AdminDashboard() {
       )}
 
       {/* LEFT SIDEBAR navigation */}
-      <aside className="w-64 bg-slate-950 text-slate-400 border-r border-slate-800/80 flex flex-col shrink-0">
+      <aside className="w-64 bg-slate-950 text-slate-450 border-r border-slate-800/80 flex flex-col shrink-0">
         {/* Brand logo & header */}
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shadow-md shadow-blue-800/30">
@@ -615,6 +873,24 @@ export default function AdminDashboard() {
 
         {/* Navigation Sections */}
         <div className="flex-1 py-6 px-4 space-y-7 overflow-y-auto">
+          {/* Section: Planning Desk */}
+          <div className="space-y-2">
+            <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest px-3">Planning Desk</p>
+            <nav className="space-y-1">
+              {[
+                { id: 'events', label: 'Event Workspace', icon: <Calendar className="w-4 h-4" /> },
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => setActiveTab(t.id as Tab)}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-slate-900 text-white font-extrabold border-l-2 border-blue-500 shadow-inner' : 'text-slate-450 hover:bg-slate-900/50 hover:text-slate-200'}`}
+                >
+                  {t.icon} <span>{t.label}</span>
+                </button>
+              ))}
+            </nav>
+          </div>
+
           {/* Section: Layout Configurator */}
           <div className="space-y-2">
             <p className="text-[10px] font-extrabold text-slate-500 uppercase tracking-widest px-3">Venues & screens</p>
@@ -628,7 +904,7 @@ export default function AdminDashboard() {
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id as Tab)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-slate-900 text-white font-extrabold border-l-2 border-blue-500 shadow-inner' : 'text-slate-400 hover:bg-slate-900/50 hover:text-slate-200'}`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-slate-900 text-white font-extrabold border-l-2 border-blue-500 shadow-inner' : 'text-slate-450 hover:bg-slate-900/50 hover:text-slate-200'}`}
                 >
                   {t.icon} <span>{t.label}</span>
                 </button>
@@ -647,7 +923,7 @@ export default function AdminDashboard() {
                 <button
                   key={t.id}
                   onClick={() => setActiveTab(t.id as Tab)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-slate-900 text-white font-extrabold border-l-2 border-blue-500 shadow-inner' : 'text-slate-400 hover:bg-slate-900/50 hover:text-slate-200'}`}
+                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-slate-900 text-white font-extrabold border-l-2 border-blue-500 shadow-inner' : 'text-slate-450 hover:bg-slate-900/50 hover:text-slate-200'}`}
                 >
                   {t.icon} <span>{t.label}</span>
                 </button>
@@ -678,6 +954,7 @@ export default function AdminDashboard() {
         <header className="bg-white border-b border-slate-200 px-8 py-5 flex items-center justify-between sticky top-0 z-20 shadow-sm shadow-slate-100/50">
           <div>
             <h2 className="text-lg font-bold text-slate-800 leading-tight">
+              {activeTab === 'events' && 'Event Workspace'}
               {activeTab === 'cities' && 'Cities & Regions'}
               {activeTab === 'venues' && 'Hotel Venues'}
               {activeTab === 'halls' && 'Conference Halls'}
@@ -686,6 +963,7 @@ export default function AdminDashboard() {
               {activeTab === 'roles' && 'Role Permissions Matrix'}
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
+              {activeTab === 'events' && 'Conceptualize, schedule, and plan event spaces.'}
               {activeTab === 'cities' && 'Configure regions and metropolitan areas.'}
               {activeTab === 'venues' && 'Configure hotels, resorts, and conference centers.'}
               {activeTab === 'halls' && 'Configure custom conference rooms and LED mapping matrices.'}
@@ -697,12 +975,690 @@ export default function AdminDashboard() {
         </header>
 
         <div className="p-8 max-w-7xl mx-auto space-y-6">
-          {loading && activeTab !== 'users' && activeTab !== 'roles' ? (
+          {loading && activeTab !== 'users' && activeTab !== 'roles' && activeTab !== 'events' ? (
             <div className="flex items-center justify-center h-48">
               <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
             </div>
           ) : (
             <>
+              {/* EVENTS TAB (MODULE 2) */}
+              {activeTab === 'events' && (
+                <div className="space-y-6 animate-fade-in">
+                  
+                  {/* Dashboard Metrics Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-650 flex items-center justify-center"><Calendar className="w-5 h-5" /></div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-450 uppercase tracking-widest leading-none">Total Events</p>
+                        <h3 className="text-xl font-extrabold text-slate-800 mt-1">{eventsList.length}</h3>
+                      </div>
+                    </div>
+                    <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-650 flex items-center justify-center"><Building2 className="w-5 h-5" /></div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-450 uppercase tracking-widest leading-none">Venues Booked</p>
+                        <h3 className="text-xl font-extrabold text-slate-800 mt-1">{metrics.venuesPlanned}</h3>
+                      </div>
+                    </div>
+                    <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-650 flex items-center justify-center"><Layers className="w-5 h-5" /></div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-450 uppercase tracking-widest leading-none">Halls Configured</p>
+                        <h3 className="text-xl font-extrabold text-slate-800 mt-1">{metrics.hallsPlanned}</h3>
+                      </div>
+                    </div>
+                    <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-650 flex items-center justify-center"><DollarSign className="w-5 h-5" /></div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-450 uppercase tracking-widest leading-none">Total Budget</p>
+                        <h3 className="text-xl font-extrabold text-slate-800 mt-1">${metrics.budgetSum.toLocaleString()}</h3>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Search and Filters Bar */}
+                  <div className="bg-white rounded-2xl border border-slate-200/80 p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3 flex-1">
+                      {/* Search box */}
+                      <div className="relative flex-1 min-w-[200px] max-w-sm">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Search events, clients..."
+                          value={eventSearch}
+                          onChange={e => setEventSearch(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700"
+                        />
+                      </div>
+                      
+                      {/* Category Filter */}
+                      <div className="relative">
+                        <select
+                          value={eventCategoryFilter}
+                          onChange={e => setEventCategoryFilter(e.target.value)}
+                          className="pl-3 pr-8 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 bg-white appearance-none"
+                        >
+                          <option value="">All Categories</option>
+                          {['Government', 'Corporate', 'Exhibition', 'Conference', 'Wedding', 'Political', 'Product Launch', 'Cultural', 'Education', 'Sports', 'Other'].map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                        <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      </div>
+
+                      {/* Status Filter */}
+                      <div className="relative">
+                        <select
+                          value={eventStatusFilter}
+                          onChange={e => setEventStatusFilter(e.target.value)}
+                          className="pl-3 pr-8 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium text-slate-700 bg-white appearance-none"
+                        >
+                          <option value="">All Statuses</option>
+                          {['Draft', 'Planning', 'Approved', 'Working', 'Live', 'Completed', 'Archived', 'Cancelled'].map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                        <Filter className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    {/* Add Event button */}
+                    <button
+                      onClick={() => setShowCreateWizard(true)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center justify-center gap-1.5 shrink-0"
+                    >
+                      <Plus className="w-4 h-4" /> Create New Event
+                    </button>
+                  </div>
+
+                  {/* Events Grid List */}
+                  {eventsList.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-slate-200/80 p-16 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                        <Calendar className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-bold text-slate-700 text-sm">No events conceptualized</h4>
+                      <p className="text-xs text-slate-400 max-w-xs mx-auto">Get started by building your first enterprise event conceptualization project workspace.</p>
+                      <button
+                        onClick={() => setShowCreateWizard(true)}
+                        className="px-4 py-2 bg-blue-50 text-blue-650 hover:bg-blue-100 rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Conceptualize Event
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {eventsList.map(e => (
+                        <div key={e.id} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col hover:shadow-md hover:border-slate-300/80 transition-all duration-300">
+                          {/* Banner background based on category */}
+                          <div className={`h-2.5 bg-gradient-to-r ${getBannerGradient(e.category)}`} />
+                          
+                          <div className="p-6 flex-1 flex flex-col space-y-4">
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-1.5">
+                                <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">{e.category}</span>
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${getStatusStyle(e.status)}`}>
+                                  {e.status}
+                                </span>
+                              </div>
+                              <h3 className="font-extrabold text-slate-800 text-base leading-snug line-clamp-1">{e.name}</h3>
+                              <p className="text-xs text-slate-450 font-semibold line-clamp-1 mt-0.5">{e.tagline}</p>
+                            </div>
+
+                            <p className="text-xs text-slate-450 line-clamp-2 leading-relaxed flex-1">{e.description}</p>
+
+                            <div className="border-t border-slate-100 pt-3 space-y-2">
+                              <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+                                <span className="flex items-center gap-1.5"><User className="w-3.5 h-3.5 text-slate-400" /> {e.clientName}</span>
+                                <span className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-slate-400" /> {e.city}, {e.state}</span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
+                                <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5 text-slate-350" /> {new Date(e.startDate).toLocaleDateString()}</span>
+                                <span className="bg-blue-50 text-blue-650 px-2 py-0.5 rounded font-bold">{e.venueCount} Venues / {e.hallCount} Halls</span>
+                              </div>
+                            </div>
+
+                            <div className="pt-2 flex items-center justify-between gap-2">
+                              <button
+                                onClick={() => fetchSingleEvent(e.id)}
+                                className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-colors flex items-center justify-center gap-1"
+                              >
+                                <Layout className="w-3.5 h-3.5 text-slate-400" /> Open Workspace
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Multi-step Create Event Wizard Dialog */}
+                  {showCreateWizard && (
+                    <div className="fixed inset-0 bg-black/50 z-40 flex items-center justify-center p-4">
+                      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 space-y-4 animate-scale-in max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <div>
+                            <h3 className="font-extrabold text-slate-800 text-lg">Create Event Project Workspace</h3>
+                            <p className="text-xs text-slate-400 mt-0.5">Wizard step {wizardStep} of 4</p>
+                          </div>
+                          <button onClick={() => { setShowCreateWizard(false); setWizardStep(1); }} className="text-slate-400 hover:text-slate-700"><X className="w-5 h-5" /></button>
+                        </div>
+
+                        {/* Progress Indicators */}
+                        <div className="flex items-center gap-2 pb-2">
+                          {[1, 2, 3, 4].map(stepNum => (
+                            <div key={stepNum} className="flex-1 flex items-center gap-2">
+                              <div className={`h-2.5 rounded-full flex-1 transition-all ${wizardStep >= stepNum ? 'bg-blue-650' : 'bg-slate-100'}`} />
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* STEP 1: Core Information */}
+                        {wizardStep === 1 && (
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Step 1: Core Details</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="col-span-2">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Event Name</label>
+                                <input type="text" placeholder="e.g. Annual Tech Symposium 2026" value={wizardForm.name} onChange={e => setWizardForm(f => ({ ...f, name: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Event Tagline</label>
+                                <input type="text" placeholder="e.g. Designing the Future of Cloud Computing" value={wizardForm.tagline} onChange={e => setWizardForm(f => ({ ...f, tagline: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Event Description</label>
+                                <textarea rows={3} placeholder="Provide details regarding the keynote agenda and attendee profile..." value={wizardForm.description} onChange={e => setWizardForm(f => ({ ...f, description: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium resize-none" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Client Name</label>
+                                <input type="text" placeholder="e.g. Microsoft Corporation" value={wizardForm.clientName} onChange={e => setWizardForm(f => ({ ...f, clientName: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Organizer Name</label>
+                                <input type="text" placeholder="e.g. Corporate Events Team" value={wizardForm.organizerName} onChange={e => setWizardForm(f => ({ ...f, organizerName: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Department (Optional)</label>
+                                <input type="text" placeholder="e.g. Developer Relations" value={wizardForm.department} onChange={e => setWizardForm(f => ({ ...f, department: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Category</label>
+                                <select value={wizardForm.category} onChange={e => setWizardForm(f => ({ ...f, category: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white font-medium text-slate-700">
+                                  {['Government', 'Corporate', 'Exhibition', 'Conference', 'Wedding', 'Political', 'Product Launch', 'Cultural', 'Education', 'Sports', 'Other'].map(c => (
+                                    <option key={c} value={c}>{c}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Expected Visitors</label>
+                                <input type="number" placeholder="500" value={wizardForm.expectedVisitors} onChange={e => setWizardForm(f => ({ ...f, expectedVisitors: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Budget ($)</label>
+                                <input type="number" placeholder="50000" value={wizardForm.budget} onChange={e => setWizardForm(f => ({ ...f, budget: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* STEP 2: Timeline Details */}
+                        {wizardStep === 2 && (
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Step 2: Event Timeline</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Setup Start Date</label>
+                                <input type="date" value={wizardForm.setupDate} onChange={e => setWizardForm(f => ({ ...f, setupDate: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Dismantling Finish Date</label>
+                                <input type="date" value={wizardForm.dismantleDate} onChange={e => setWizardForm(f => ({ ...f, dismantleDate: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Event Start Date</label>
+                                <input type="date" value={wizardForm.startDate} onChange={e => setWizardForm(f => ({ ...f, startDate: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Event End Date</label>
+                                <input type="date" value={wizardForm.endDate} onChange={e => setWizardForm(f => ({ ...f, endDate: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Daily Start Time</label>
+                                <input type="time" value={wizardForm.startTime} onChange={e => setWizardForm(f => ({ ...f, startTime: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Daily End Time</label>
+                                <input type="time" value={wizardForm.endTime} onChange={e => setWizardForm(f => ({ ...f, endTime: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* STEP 3: Primary Venue Location */}
+                        {wizardStep === 3 && (
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Step 3: Primary Venue Details</h4>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="col-span-2">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Primary Venue Name</label>
+                                <input type="text" placeholder="e.g. Taj Lands End Hotel" value={wizardForm.venueName} onChange={e => setWizardForm(f => ({ ...f, venueName: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div className="col-span-2">
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Venue Address</label>
+                                <input type="text" placeholder="e.g. Bandstand Promenade, Bandra West" value={wizardForm.venueAddress} onChange={e => setWizardForm(f => ({ ...f, venueAddress: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">City</label>
+                                <input type="text" placeholder="Mumbai" value={wizardForm.city} onChange={e => setWizardForm(f => ({ ...f, city: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">State</label>
+                                <input type="text" placeholder="Maharashtra" value={wizardForm.state} onChange={e => setWizardForm(f => ({ ...f, state: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Country</label>
+                                <input type="text" placeholder="India" value={wizardForm.country} onChange={e => setWizardForm(f => ({ ...f, country: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                              <div>
+                                <label className="text-xs font-bold text-slate-500 block mb-1">Google Maps Location Link (Optional)</label>
+                                <input type="text" placeholder="https://maps.google.com/..." value={wizardForm.googleMapsUrl} onChange={e => setWizardForm(f => ({ ...f, googleMapsUrl: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium" />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* STEP 4: Hall Planning */}
+                        {wizardStep === 4 && (
+                          <div className="space-y-6">
+                            <div className="border-b border-slate-100 pb-4">
+                              <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Step 4: Hall Planning ({wizardForm.venueName})</h4>
+                              
+                              {/* Hall Input Fields */}
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 bg-slate-50/50 p-4 border border-slate-200/60 rounded-2xl">
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Hall Name</label>
+                                  <input type="text" placeholder="e.g. Ballroom A" value={wizardHallTemp.name} onChange={e => setWizardHallTemp(h => ({ ...h, name: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Purpose / Agenda</label>
+                                  <input type="text" placeholder="e.g. Chief Minister Keynote" value={wizardHallTemp.purpose} onChange={e => setWizardHallTemp(h => ({ ...h, purpose: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Capacity</label>
+                                  <input type="number" placeholder="500" value={wizardHallTemp.capacity} onChange={e => setWizardHallTemp(h => ({ ...h, capacity: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Floor Number</label>
+                                  <input type="text" placeholder="e.g. 2nd Floor" value={wizardHallTemp.floorNumber} onChange={e => setWizardHallTemp(h => ({ ...h, floorNumber: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Area (sq.m)</label>
+                                  <input type="number" placeholder="1200" value={wizardHallTemp.area} onChange={e => setWizardHallTemp(h => ({ ...h, area: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Special Notes</label>
+                                  <input type="text" placeholder="Needs LED backdrop" value={wizardHallTemp.specialNotes} onChange={e => setWizardHallTemp(h => ({ ...h, specialNotes: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={addHallToPrimary}
+                                  className="col-span-2 sm:col-span-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                  <PlusCircle className="w-4 h-4" /> Add Hall to Primary Venue
+                                </button>
+                              </div>
+
+                              {/* Added Halls List */}
+                              {wizardForm.halls.length > 0 && (
+                                <div className="mt-3 space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Added Halls ({wizardForm.halls.length})</p>
+                                  <div className="divide-y divide-slate-100 max-h-[120px] overflow-y-auto border border-slate-100 rounded-xl px-3 bg-slate-50/20">
+                                    {wizardForm.halls.map((h, idx) => (
+                                      <div key={idx} className="py-2 flex items-center justify-between text-xs font-semibold text-slate-700">
+                                        <div>
+                                          <span>{h.name}</span> <span className="text-slate-400 font-medium">({h.purpose})</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold">Cap: {h.capacity}</span>
+                                          <button type="button" onClick={() => setWizardForm(f => ({ ...f, halls: f.halls.filter((_, i) => i !== idx) }))} className="text-rose-500"><X className="w-3.5 h-3.5" /></button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Additional Venues */}
+                            <div className="space-y-3">
+                              <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Add Additional Venues (Optional)</h4>
+                              
+                              <div className="grid grid-cols-2 gap-2 bg-slate-50/50 p-4 border border-slate-200/60 rounded-2xl">
+                                <input type="text" placeholder="Additional Venue Name" value={wizardVenueTemp.name} onChange={e => setWizardVenueTemp(v => ({ ...v, name: e.target.value }))} className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                <input type="text" placeholder="Address" value={wizardVenueTemp.address} onChange={e => setWizardVenueTemp(v => ({ ...v, address: e.target.value }))} className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                <input type="text" placeholder="City" value={wizardVenueTemp.city} onChange={e => setWizardVenueTemp(v => ({ ...v, city: e.target.value }))} className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                <input type="text" placeholder="State" value={wizardVenueTemp.state} onChange={e => setWizardVenueTemp(v => ({ ...v, state: e.target.value }))} className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                
+                                {/* Inner Hall adder for additional venue */}
+                                <div className="col-span-2 border-t border-slate-200/50 pt-2.5 mt-1">
+                                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Add Hall to Additional Venue</p>
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <input type="text" placeholder="Hall Name" value={wizardVenueHallTemp.name} onChange={e => setWizardVenueHallTemp(h => ({ ...h, name: e.target.value }))} className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                    <input type="text" placeholder="Purpose" value={wizardVenueHallTemp.purpose} onChange={e => setWizardVenueHallTemp(h => ({ ...h, purpose: e.target.value }))} className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-400 font-medium bg-white" />
+                                    <button type="button" onClick={addHallToTempVenue} className="py-1 px-2.5 bg-slate-800 text-white rounded-lg text-[10px] font-bold hover:bg-slate-700 transition-colors">Add Hall to Venue</button>
+                                  </div>
+                                  
+                                  {wizardVenueTemp.halls.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {wizardVenueTemp.halls.map((h: any, idx: number) => (
+                                        <span key={idx} className="bg-slate-100 border border-slate-200 text-slate-600 text-[10px] px-2 py-0.5 rounded-full font-bold">{h.name}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <button type="button" onClick={addAdditionalVenue} className="col-span-2 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-1.5 mt-2">
+                                  <PlusCircle className="w-4 h-4" /> Save Venue
+                                </button>
+                              </div>
+
+                              {/* Added Additional Venues List */}
+                              {wizardForm.venues.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Added Venues ({wizardForm.venues.length})</p>
+                                  <div className="divide-y divide-slate-100 max-h-[120px] overflow-y-auto border border-slate-100 rounded-xl px-3 bg-slate-50/20">
+                                    {wizardForm.venues.map((v, idx) => (
+                                      <div key={idx} className="py-2 flex items-center justify-between text-xs font-semibold text-slate-700">
+                                        <div>
+                                          <span>{v.name}</span> <span className="text-slate-400 font-medium">({v.city}, {v.state})</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-bold">{v.halls.length} Halls</span>
+                                          <button type="button" onClick={() => setWizardForm(f => ({ ...f, venues: f.venues.filter((_, i) => i !== idx) }))} className="text-rose-500"><X className="w-3.5 h-3.5" /></button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Footer Controls */}
+                        <div className="pt-4 border-t border-slate-100 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={wizardStep === 1}
+                            onClick={() => setWizardStep(s => s - 1)}
+                            className="w-1/2 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-sm font-bold transition-colors disabled:opacity-50"
+                          >
+                            Back
+                          </button>
+                          
+                          {wizardStep < 4 ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                // Add verification steps
+                                if (wizardStep === 1 && (!wizardForm.name.trim() || !wizardForm.clientName.trim())) {
+                                  return show('Event Name and Client Name are required', 'error');
+                                }
+                                if (wizardStep === 2 && (!wizardForm.startDate || !wizardForm.endDate)) {
+                                  return show('Timeline setup dates are required', 'error');
+                                }
+                                if (wizardStep === 3 && (!wizardForm.venueName.trim() || !wizardForm.venueAddress.trim())) {
+                                  return show('Venue Name and Address are required', 'error');
+                                }
+                                setWizardStep(s => s + 1);
+                              }}
+                              className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-sm transition-colors"
+                            >
+                              Next Step
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleCreateEventSubmit}
+                              disabled={saving}
+                              className="w-1/2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center justify-center gap-1.5"
+                            >
+                              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Finish Conceptualization
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Event Overview Detail Modal Overlay (MODULE 2) */}
+                  {showDetailView && selectedEvent && (
+                    <div className="fixed inset-0 bg-slate-900/60 z-40 flex justify-end">
+                      <div className="bg-white w-full max-w-4xl h-full shadow-2xl overflow-y-auto flex flex-col animate-slide-in relative">
+                        
+                        {/* Dynamic Category Banner Header */}
+                        <div className={`p-8 bg-gradient-to-r ${getBannerGradient(selectedEvent.category)} text-white relative flex flex-col justify-end min-h-[180px] shrink-0`}>
+                          <button
+                            onClick={() => { setShowDetailView(false); setSelectedEvent(null); }}
+                            className="absolute top-5 right-5 text-white/70 hover:text-white p-2 rounded-full hover:bg-white/10 transition-all"
+                          >
+                            <X className="w-6 h-6" />
+                          </button>
+                          
+                          <div className="space-y-2 mt-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-extrabold uppercase tracking-widest text-white/80 bg-white/10 px-2 py-0.5 rounded border border-white/10">{selectedEvent.category}</span>
+                              
+                              {/* Status Dropdown selector */}
+                              <div className="relative">
+                                <select
+                                  value={selectedEvent.status}
+                                  onChange={e => updateEventStatus(selectedEvent.id, e.target.value)}
+                                  className="bg-white/10 border border-white/20 rounded-md text-[10px] font-bold text-white px-2 py-0.5 focus:outline-none cursor-pointer pr-5 appearance-none"
+                                >
+                                  {['Draft', 'Planning', 'Approved', 'Working', 'Live', 'Completed', 'Archived', 'Cancelled'].map(st => (
+                                    <option key={st} value={st} className="text-slate-800 font-semibold">{st}</option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-white/70 pointer-events-none" />
+                              </div>
+                            </div>
+                            <h2 className="text-2xl font-extrabold tracking-tight leading-tight">{selectedEvent.name}</h2>
+                            <p className="text-sm font-semibold text-white/80">{selectedEvent.tagline}</p>
+                          </div>
+                        </div>
+
+                        {/* Detail Body Content */}
+                        <div className="p-8 flex-1 space-y-8 overflow-y-auto">
+                          
+                          {/* Layout Split: Details vs Stats */}
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            
+                            {/* Left Side: Text details */}
+                            <div className="lg:col-span-2 space-y-6">
+                              <div className="bg-slate-50/50 border border-slate-200/60 p-5 rounded-2xl space-y-3">
+                                <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Briefcase className="w-4 h-4 text-slate-400" /> Event Narrative</h4>
+                                <p className="text-sm text-slate-650 leading-relaxed font-medium">{selectedEvent.description}</p>
+                              </div>
+
+                              {/* Timeline Milestones */}
+                              <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm space-y-4">
+                                <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Clock className="w-4 h-4 text-slate-400" /> Timeline Milestones</h4>
+                                <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-600">
+                                  <div className="flex items-center gap-2.5 p-3 bg-slate-50/50 rounded-xl border border-slate-200/50">
+                                    <Calendar className="w-4 h-4 text-blue-500" />
+                                    <div>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Setup Start</p>
+                                      <p className="mt-0.5">{new Date(selectedEvent.setupDate).toLocaleDateString()}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2.5 p-3 bg-slate-50/50 rounded-xl border border-slate-200/50">
+                                    <Calendar className="w-4 h-4 text-rose-500" />
+                                    <div>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Dismantle Finish</p>
+                                      <p className="mt-0.5">{new Date(selectedEvent.dismantleDate).toLocaleDateString()}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2.5 p-3 bg-slate-50/50 rounded-xl border border-slate-200/50">
+                                    <Clock className="w-4 h-4 text-emerald-500" />
+                                    <div>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Daily Start</p>
+                                      <p className="mt-0.5">{selectedEvent.startTime}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2.5 p-3 bg-slate-50/50 rounded-xl border border-slate-200/50">
+                                    <Clock className="w-4 h-4 text-amber-500" />
+                                    <div>
+                                      <p className="text-[10px] text-slate-400 font-bold uppercase">Daily Finish</p>
+                                      <p className="mt-0.5">{selectedEvent.endTime}</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right Side: Quick Stats Cards */}
+                            <div className="space-y-4">
+                              <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-4">
+                                <h4 className="text-[10px] font-extrabold text-slate-550 uppercase tracking-widest">Workspace Statistics</h4>
+                                <div className="space-y-3">
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-400">Total Venues</span>
+                                    <span className="font-extrabold">{selectedEvent.venueCount}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-400">Total Halls</span>
+                                    <span className="font-extrabold">{selectedEvent.hallCount}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-400">Expected Attendees</span>
+                                    <span className="font-extrabold">{selectedEvent.expectedVisitors?.toLocaleString() || '0'}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-xs">
+                                    <span className="text-slate-400">Department</span>
+                                    <span className="font-extrabold truncate max-w-[120px]">{selectedEvent.department || 'N/A'}</span>
+                                  </div>
+                                  <div className="flex justify-between items-center text-xs border-t border-slate-800 pt-3">
+                                    <span className="text-slate-400 font-bold">Planned Budget</span>
+                                    <span className="font-extrabold text-emerald-450 text-sm">${selectedEvent.budget?.toLocaleString() || '0'}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="bg-white border border-slate-200/80 p-5 rounded-2xl shadow-sm text-center py-6">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">Days to Event Finish</p>
+                                <h2 className="text-3xl font-extrabold text-slate-800 mt-2">
+                                  {Math.max(0, Math.ceil((new Date(selectedEvent.endDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))}
+                                </h2>
+                                <p className="text-[10px] text-slate-400 font-medium mt-1">Working Days Countdown</p>
+                              </div>
+                            </div>
+
+                          </div>
+
+                          {/* Venue Accordions */}
+                          <div className="space-y-4">
+                            <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5"><Building2 className="w-4 h-4 text-slate-400" /> Planned Venues & Halls</h4>
+                            <div className="space-y-3">
+                              {selectedEvent.venues && selectedEvent.venues.map((venue: any, vIdx: number) => (
+                                <div key={venue.id} className="border border-slate-250/70 rounded-2xl bg-white overflow-hidden shadow-sm">
+                                  <div className="bg-slate-50/50 border-b border-slate-200/50 px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                                    <div>
+                                      <p className="text-xs text-blue-650 font-bold flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Venue {vIdx + 1}</p>
+                                      <h3 className="font-extrabold text-slate-800 text-sm mt-0.5">{venue.name}</h3>
+                                      <p className="text-[11px] text-slate-450 font-medium mt-0.5">{venue.address} · {venue.city}, {venue.state}</p>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-200/30">{venue.halls.length} Halls</span>
+                                      {venue.googleMapsUrl && (
+                                        <a href={venue.googleMapsUrl} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded hover:underline">Maps ↗</a>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="divide-y divide-slate-100">
+                                    {venue.halls.length === 0 ? (
+                                      <p className="p-4 text-xs font-medium text-slate-400 italic text-center">No halls configured for this venue.</p>
+                                    ) : (
+                                      venue.halls.map((h: any, hIdx: number) => (
+                                        <div key={h.id} className="p-4.5 flex flex-col sm:flex-row sm:items-start gap-4 justify-between hover:bg-slate-50/20 transition">
+                                          <div className="space-y-1">
+                                            <p className="text-[11px] font-bold text-slate-400">Hall {vIdx + 1}.{hIdx + 1}</p>
+                                            <h4 className="font-extrabold text-slate-800 text-sm">{h.name}</h4>
+                                            <p className="text-xs text-slate-500 font-medium leading-relaxed"><b>Purpose:</b> {h.purpose}</p>
+                                            {h.specialNotes && (
+                                              <p className="text-xs text-slate-400 font-medium"><b>Notes:</b> {h.specialNotes}</p>
+                                            )}
+                                          </div>
+                                          <div className="flex flex-wrap gap-2 text-[10px] font-bold text-slate-500 items-center">
+                                            <span className="bg-slate-100 px-2 py-0.5 rounded">Floor: {h.floorNumber || 'G'}</span>
+                                            <span className="bg-slate-100 px-2 py-0.5 rounded">Area: {h.area} sq.m</span>
+                                            <span className="bg-blue-50 text-blue-650 px-2 py-0.5 rounded">Cap: {h.capacity}</span>
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Quick Action Buttons to subsequent modules */}
+                          <div className="border-t border-slate-100 pt-6">
+                            <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-4">Event Operations & visualizer</h4>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                              
+                              {/* 1. Generate Mockup (brings user back to front visualizer page!) */}
+                              <Link
+                                href={`/?eventId=${selectedEvent.id}`}
+                                className="p-4.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl flex flex-col items-center justify-center text-center shadow-md shadow-blue-200 transition-all cursor-pointer group"
+                              >
+                                <Sparkles className="w-6 h-6 text-white/90 group-hover:scale-105 transition-transform" />
+                                <span className="text-xs font-bold mt-2">Generate AI Mockup</span>
+                                <span className="text-[9px] text-white/70 font-semibold mt-0.5">Open Stage visualizer</span>
+                              </Link>
+
+                              {[
+                                { label: 'Element Sheets', sub: 'Technical specifications', icon: <FileSpreadsheet className="w-5 h-5" /> },
+                                { label: 'Ledger', sub: 'Billing & expenses', icon: <DollarSign className="w-5 h-5" /> },
+                                { label: 'Tasks', sub: 'Todo checklist & statuses', icon: <ListTodo className="w-5 h-5" /> },
+                                { label: 'Files', sub: 'Blueprints, images & receipts', icon: <Briefcase className="w-5 h-5" /> },
+                                { label: 'Reports', sub: 'Project summary logs', icon: <Clipboard className="w-5 h-5" /> },
+                              ].map(action => (
+                                <button
+                                  key={action.label}
+                                  onClick={() => show(`${action.label} module will launch in Step 3.`)}
+                                  className="p-4.5 bg-white border border-slate-200/80 hover:bg-slate-50 text-slate-700 rounded-2xl flex flex-col items-center justify-center text-center transition-all cursor-pointer"
+                                >
+                                  <div className="text-slate-400">{action.icon}</div>
+                                  <span className="text-xs font-bold mt-2 text-slate-800">{action.label}</span>
+                                  <span className="text-[9px] text-slate-400 font-medium mt-0.5">{action.sub}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Delete workspace block */}
+                          <div className="pt-6 border-t border-slate-100 flex justify-end">
+                            <button
+                              onClick={() => deleteEvent(selectedEvent.id)}
+                              className="px-4 py-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                            >
+                              <Trash2 className="w-4 h-4" /> Delete Event Workspace
+                            </button>
+                          </div>
+
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
               {/* CITIES TAB */}
               {activeTab === 'cities' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
@@ -888,13 +1844,13 @@ export default function AdminDashboard() {
                                 <p className="text-xs text-slate-400 font-medium mt-0.5">{h.venue?.name} · {h.venue?.city?.name}</p>
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
                                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">L:{h.length}m W:{h.width}m H:{h.height}m</span>
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-600">Cap: {h.capacity} pax</span>
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-650">Cap: {h.capacity} pax</span>
                                   {h.floorPlanUrl && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">Floorplan ✓</span>}
                                   {(h.refPhotoUrl1 || h.refPhotoUrl2) && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">Gallery ✓</span>}
                                 </div>
                               </div>
                               <div className="flex flex-col gap-1.5 shrink-0">
-                                <button onClick={() => startEditingMasks(h)} className="text-[11px] bg-blue-50 text-blue-600 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap">Edit Config</button>
+                                <button onClick={() => startEditingMasks(h)} className="text-[11px] bg-blue-50 text-blue-650 hover:bg-blue-100 px-3 py-1.5 rounded-lg font-bold transition-colors whitespace-nowrap">Edit Config</button>
                                 <button onClick={() => deleteHall(h.id)} className="text-[11px] bg-red-50 text-red-500 hover:bg-red-100 px-3 py-1.5 rounded-lg font-bold transition-colors">Delete</button>
                               </div>
                             </div>
@@ -1054,7 +2010,7 @@ export default function AdminDashboard() {
 
                                   {/* Role */}
                                   <td className="px-6 py-4">
-                                    <span className="inline-block text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/40">
+                                    <span className="inline-block text-[11px] font-semibold text-slate-605 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/40">
                                       {u.role.name}
                                     </span>
                                   </td>
@@ -1316,7 +2272,7 @@ export default function AdminDashboard() {
                   
                   {/* Security info card */}
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 p-5 rounded-2xl flex gap-4">
-                    <div className="p-2.5 bg-blue-100 rounded-xl text-blue-600 h-fit">
+                    <div className="p-2.5 bg-blue-100 rounded-xl text-blue-650 h-fit">
                       <ShieldCheck className="w-6 h-6" />
                     </div>
                     <div className="space-y-1">
@@ -1337,7 +2293,7 @@ export default function AdminDashboard() {
                     <div className="overflow-x-auto">
                       <table className="w-full text-left border-collapse">
                         <thead>
-                          <tr className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100">
+                          <tr className="bg-slate-50 text-slate-450 text-[10px] font-bold uppercase tracking-widest border-b border-slate-100">
                             <th className="px-6 py-4 font-bold">System Role</th>
                             {permissionsList.map(p => (
                               <th key={p.id} className="px-6 py-4 font-bold text-center" title={p.description || ''}>
@@ -1371,7 +2327,7 @@ export default function AdminDashboard() {
                                         checked={hasPerm}
                                         disabled={isSuperAdmin || !canUpdate || isSaving}
                                         onChange={() => handleTogglePermission(role.id, p.id, role.permissionIds.includes(p.id))}
-                                        className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-300 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50"
+                                        className="w-4.5 h-4.5 text-blue-600 bg-slate-50 border-slate-350 rounded focus:ring-blue-500 focus:ring-2 disabled:opacity-50"
                                       />
                                     </td>
                                   );
