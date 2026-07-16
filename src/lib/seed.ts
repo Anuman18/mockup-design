@@ -1,9 +1,17 @@
 import { prisma } from './db';
+import bcrypt from 'bcryptjs';
 
 async function seed() {
   console.log('🌱 Seeding Eventelligence database...');
 
   // Clean slate
+  await prisma.session.deleteMany();
+  await prisma.passwordResetToken.deleteMany();
+  await prisma.user.deleteMany();
+  await prisma.rolePermission.deleteMany();
+  await prisma.permission.deleteMany();
+  await prisma.role.deleteMany();
+
   await prisma.logo.deleteMany();
   await prisma.brandingTemplate.deleteMany();
   await prisma.seatingTemplate.deleteMany();
@@ -11,6 +19,91 @@ async function seed() {
   await prisma.venueHall.deleteMany();
   await prisma.venue.deleteMany();
   await prisma.city.deleteMany();
+
+  // Seed Roles
+  const rolesList = [
+    { name: 'Super Admin', description: 'Access to all systems and configuration' },
+    { name: 'Admin', description: 'Full system management access' },
+    { name: 'Event Manager', description: 'Manage and coordinate events' },
+    { name: 'Project Manager', description: 'Direct project execution and timelines' },
+    { name: 'Designer', description: 'Access to visual layouts and design tools' },
+    { name: 'Finance', description: 'Review billing, budget, and reports' },
+    { name: 'Vendor', description: 'Manage vendor deliverables' },
+    { name: 'Client', description: 'View progress and submit approvals' },
+    { name: 'Viewer', description: 'Read-only viewer account' }
+  ];
+
+  const dbRoles: Record<string, any> = {};
+  for (const r of rolesList) {
+    dbRoles[r.name] = await prisma.role.create({ data: r });
+  }
+
+  // Seed Permissions
+  const permissionsList = [
+    { name: 'Create', description: 'Create resources' },
+    { name: 'Read', description: 'Read resources' },
+    { name: 'Update', description: 'Update resources' },
+    { name: 'Delete', description: 'Delete resources' },
+    { name: 'Approve', description: 'Approve assets' }
+  ];
+
+  const dbPermissions: Record<string, any> = {};
+  for (const p of permissionsList) {
+    dbPermissions[p.name] = await prisma.permission.create({ data: p });
+  }
+
+  // Map permissions to roles
+  for (const pName of Object.keys(dbPermissions)) {
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles['Super Admin'].id, permissionId: dbPermissions[pName].id }
+    });
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles['Admin'].id, permissionId: dbPermissions[pName].id }
+    });
+  }
+
+  const mgrPerms = ['Create', 'Read', 'Update', 'Approve'];
+  for (const pName of mgrPerms) {
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles['Event Manager'].id, permissionId: dbPermissions[pName].id }
+    });
+  }
+
+  const pmPerms = ['Create', 'Read', 'Update'];
+  for (const pName of pmPerms) {
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles['Project Manager'].id, permissionId: dbPermissions[pName].id }
+    });
+  }
+
+  const designerPerms = ['Read', 'Update'];
+  for (const pName of designerPerms) {
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles['Designer'].id, permissionId: dbPermissions[pName].id }
+    });
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles['Finance'].id, permissionId: dbPermissions[pName].id }
+    });
+  }
+
+  const readRoles = ['Vendor', 'Client', 'Viewer'];
+  for (const rName of readRoles) {
+    await prisma.rolePermission.create({
+      data: { roleId: dbRoles[rName].id, permissionId: dbPermissions['Read'].id }
+    });
+  }
+
+  // Seed default admin user
+  const passwordHash = bcrypt.hashSync('admin123', 10);
+  await prisma.user.create({
+    data: {
+      email: 'admin@eventelligence.com',
+      passwordHash,
+      name: 'Super Admin',
+      roleId: dbRoles['Super Admin'].id,
+      status: 'active'
+    }
+  });
 
   // Cities
   const mumbai   = await prisma.city.create({ data: { name: 'Mumbai',    state: 'Maharashtra' } });
