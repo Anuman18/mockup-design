@@ -4,7 +4,7 @@ import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 
 // Session cookie configuration
-export const SESSION_COOKIE_NAME = 'eventelligence_session';
+export const SESSION_COOKIE_NAME = 'eventelligence_session_v2';
 export const SESSION_DURATION_DAYS = 7;
 
 /**
