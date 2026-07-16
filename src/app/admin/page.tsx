@@ -360,7 +360,7 @@ export default function AdminDashboard() {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch('/api/templates');
+      const res = await fetch('/api/visual-templates');
       const data = await res.json();
       if (res.ok) {
         setTemplatesList(data);
