@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from './db';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import crypto from 'crypto';
 
 // Session cookie configuration
@@ -129,9 +129,13 @@ export async function destroySession() {
       await prisma.session.delete({ where: { token: sessionToken } }).catch(() => {});
     }
 
+    const host = (await headers()).get('host') || '';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.');
+    const secure = process.env.NODE_ENV === 'production' && !isLocalhost;
+
     cookieStore.set(SESSION_COOKIE_NAME, '', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure,
       sameSite: 'lax',
       expires: new Date(0),
       path: '/'

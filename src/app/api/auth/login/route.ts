@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { comparePassword, createSession, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS } from '@/lib/auth';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
@@ -49,10 +49,14 @@ export async function POST(request: Request) {
     const token = await createSession(user.id);
 
     // Set cookie
+    const host = (await headers()).get('host') || '';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1') || host.includes('192.168.');
+    const secure = process.env.NODE_ENV === 'production' && !isLocalhost;
+
     const cookieStore = await cookies();
     cookieStore.set(SESSION_COOKIE_NAME, token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24 * SESSION_DURATION_DAYS,
       path: '/'
